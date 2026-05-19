@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Local environment
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Build / cache
+dist/
+build/
+.cache/
+
+# Test and generated artifacts
+coverage/
+playwright-report/
+test-results/
+output/
+
+# Original imported folder kept outside the tracked repo structure
+App onboarding (1)/

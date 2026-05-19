@@ -1,0 +1,105 @@
+/* Latest grid: magazine card, 3D tilt hover, highlight fill */
+  /* ============ GRID (LATEST) ============ */
+  .grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 18px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md);
+    padding: 22px; cursor: pointer;
+    display: flex; flex-direction: column; gap: 14px;
+    position: relative; overflow: hidden;
+    --rx: 0deg; --ry: 0deg; --sx: 0px; --sy: 8px;
+    transform: perspective(900px) rotateX(var(--rx)) rotateY(var(--ry)) translateZ(0);
+    transform-style: preserve-3d;
+    transition: transform .45s var(--ease-suk), box-shadow .45s var(--ease-suk), border-color .3s var(--ease-suk), background-color .3s var(--ease-suk);
+    animation: sukIn .55s var(--ease-suk) var(--delay, 0s) backwards;
+    box-shadow: var(--shadow-sm);
+  }
+  .card.tilting {
+    transition: transform .12s linear, box-shadow .12s linear, border-color .3s, background-color .3s;
+    box-shadow:
+      var(--sx) var(--sy) 44px -10px rgba(20,20,25,.22),
+      calc(var(--sx) * -0.4) calc(var(--sy) * 0.4) 16px -6px rgba(20,20,25,.08),
+      0 1px 2px rgba(20,20,25,.04);
+  }
+  /* shine that follows the cursor */
+  .card-shine {
+    position: absolute; inset: 0; pointer-events: none; z-index: 2;
+    background: radial-gradient(380px circle at var(--mx, 50%) var(--my, 50%), rgba(255,255,255,.45), transparent 60%);
+    opacity: 0; transition: opacity .3s var(--ease-suk);
+    mix-blend-mode: overlay;
+  }
+  .card.tilting .card-shine { opacity: 1; }
+  /* highlight hover: slide accent fill */
+  .card::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(135deg, var(--accent-soft) 0%, var(--highlight) 100%);
+    transform: translateX(-101%);
+    transition: transform .5s var(--ease-suk);
+    z-index: 0;
+    pointer-events: none;
+  }
+  .card:hover::after { transform: translateX(0); }
+  .card:hover { border-color: var(--accent-soft-2); }
+  .card > * { position: relative; z-index: 1; }
+  .card-shine { z-index: 2 !important; }
+  .card::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: var(--accent); transform: scaleX(0); transform-origin: left;
+    transition: transform .5s var(--ease-suk);
+    z-index: 2;
+  }
+  .card:hover::before { transform: scaleX(1); }
+
+  .span-3 { grid-column: span 3; }
+  .span-2 { grid-column: span 2; }
+  .span-4 { grid-column: span 4; }
+  .span-6 { grid-column: span 6; }
+
+  .card-meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .tag-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .tag { font-size: 12px; font-weight: 600; color: var(--ink-2); padding: 4px 10px; border-radius: var(--r-pill); background: var(--surface-2); transition: background .3s, color .3s; white-space: nowrap; }
+  .tag.accent { background: var(--accent-soft); color: var(--accent-ink); }
+  .card:hover .tag { background: rgba(255,255,255,.7); }
+  .card:hover .tag.accent { background: var(--accent); color: #fff; }
+
+  .card h3 { margin: 0; font-size: 18px; line-height: 1.35; letter-spacing: -0.02em; font-weight: 700; text-wrap: pretty; }
+  .card .summary {
+    color: var(--ink-2); font-size: 14px; line-height: 1.6;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+    transition: color .3s;
+  }
+  .card:hover .summary { color: var(--ink); }
+  .card-foot {
+    margin-top: auto; padding-top: 12px; border-top: 1px dashed var(--line);
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 12.5px; color: var(--ink-3);
+    position: relative; gap: 10px;
+    transition: border-color .3s;
+  }
+  .card:hover .card-foot { border-color: var(--accent-soft-2); }
+  .card-foot .stage { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--ink-2); }
+  .stage-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-4); }
+  .stage-dot.s1 { background: oklch(0.7 0.1 60); }
+  .stage-dot.s2 { background: oklch(0.6 0.1 250); }
+  .stage-dot.s3 { background: oklch(0.55 0.13 155); }
+  .stage-dot.s4 { background: oklch(0.45 0.1 290); }
+  .card-foot .foot-date { transition: opacity .2s var(--ease-suk); }
+  .card:hover .foot-date { opacity: 0; }
+  .suk-hint {
+    position: absolute; right: 0; top: 50%; transform: translateY(-50%) translateX(-8px);
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 12.5px; font-weight: 700; color: var(--accent-ink);
+    opacity: 0; transition: opacity .25s var(--ease-suk), transform .35s var(--ease-suk);
+  }
+  .card:hover .suk-hint { opacity: 1; transform: translateY(-50%) translateX(0); }
+  .card.compact h3 { font-size: 16px; }
+  .card.compact .summary { -webkit-line-clamp: 2; font-size: 13.5px; }
+  .card .bookmark {
+    position: absolute; top: 18px; right: 18px;
+    width: 32px; height: 32px; border-radius: 50%;
+    display: grid; place-items: center; color: var(--ink-3);
+    opacity: 0; transition: opacity .15s, background .15s;
+    z-index: 3;
+  }
+  .card:hover .bookmark { opacity: 1; }
+  .card .bookmark:hover { background: rgba(255,255,255,.7); color: var(--ink); }
+  .card .bookmark.saved { opacity: 1; color: var(--accent-ink); }

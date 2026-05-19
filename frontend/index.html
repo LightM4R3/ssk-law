@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>슥법 — 최신 법안을 슥, 훑다</title>
+  <meta name="description" content="슥법(SSK-Law) — 최신 법안을 시민의 언어로 빠르게 훑어보는 큐레이션 서비스" />
+
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css" />
+
+  <!-- Design tokens and base reset must load first. -->
+  <link rel="stylesheet" href="styles/tokens.css" />
+  <link rel="stylesheet" href="styles/layout.css" />
+  <link rel="stylesheet" href="styles/header.css" />
+  <link rel="stylesheet" href="styles/ticker.css" />
+  <link rel="stylesheet" href="styles/carousel.css" />
+  <link rel="stylesheet" href="styles/filters.css" />
+  <link rel="stylesheet" href="styles/cards.css" />
+  <link rel="stylesheet" href="styles/weekly.css" />
+  <link rel="stylesheet" href="styles/search-results.css" />
+  <link rel="stylesheet" href="styles/modal.css" />
+  <link rel="stylesheet" href="styles/responsive.css" />
+</head>
+<body>
+<!-- HEADER -->
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="brand" href="#/" data-route="home">
+      <div class="brand-mark">슥</div>
+      <span>슥법</span>
+      <small>· SSK-Law</small>
+    </a>
+    <nav class="nav" id="nav">
+      <a href="#/" data-route="home">홈</a>
+      <a href="#/latest" data-route="latest">최신 법안</a>
+      <a href="#/weekly" data-route="weekly">인기 법안</a>
+      <a href="#/" data-route="home" style="opacity:.6;pointer-events:none">분야별</a>
+      <a href="#/" data-route="home" style="opacity:.6;pointer-events:none">내 북마크</a>
+    </nav>
+    <div class="top-actions">
+      <button class="icon-btn" aria-label="알림">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+      </button>
+      <div class="avatar">JS</div>
+    </div>
+  </div>
+</header>
+
+<!-- TICKER -->
+<div class="ticker">
+  <div class="ticker-inner">
+    <div class="ticker-label"><span class="ticker-pulse"></span>지금 슥</div>
+    <div class="ticker-viewport"><div class="ticker-track" id="tickerTrack"></div></div>
+  </div>
+</div>
+
+<main>
+  <!-- ============ HOME ============ -->
+  <section class="view" id="view-home">
+    <div class="search-row">
+      <label class="search">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="searchInput" placeholder="슥, 찾아보세요  ·  예: 청년 월세, 플랫폼 노동, 기후" autocomplete="off" />
+        <span class="suk-caret">슥</span>
+        <span class="kbd">⌘ K</span>
+      </label>
+      <button class="sort-btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M10 18h4"/></svg>
+        <span>오늘의 큐레이션</span>
+      </button>
+    </div>
+
+    <div class="section-head">
+      <div>
+        <h2>오늘 슥 보기 좋은 법안</h2>
+        <div class="sub">5월 14일 · 슥법 에디터가 고른 다섯 법안을 옆으로 슥 넘겨가며 확인하세요.</div>
+      </div>
+    </div>
+
+    <div class="carousel" id="carousel">
+      <div class="carousel-viewport" id="carouselViewport">
+        <div class="carousel-track" id="carouselTrack"></div>
+      </div>
+      <div class="carousel-controls">
+        <div class="carousel-dots" id="dots"></div>
+        <div class="swipe-hint">
+          <span>슥 넘기기</span>
+          <span class="key">←</span>
+          <span class="key">→</span>
+        </div>
+        <div class="carousel-arrows">
+          <button class="arrow" id="prev" aria-label="이전">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+          </button>
+          <button class="arrow" id="next" aria-label="다음">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ LATEST ============ -->
+  <section class="view" id="view-latest">
+    <div class="section-head">
+      <div>
+        <h2>슥 훑어보는 최신 법안</h2>
+        <div class="sub">최근 2주 안에 새롭게 올라온 법안들. 카드에 마우스를 올리면 슥 들여다볼 수 있어요.</div>
+      </div>
+    </div>
+    <div class="filters" id="filters"></div>
+    <section class="grid" id="grid"></section>
+  </section>
+
+  <!-- ============ WEEKLY ============ -->
+  <section class="view" id="view-weekly">
+    <div class="section-head">
+      <div>
+        <h2>이번 주 가장 많이 슥본 법안</h2>
+        <div class="sub">조회수와 북마크 수를 합산한 주간 랭킹이에요.</div>
+      </div>
+    </div>
+    <div class="weekly-list" id="weeklyList"></div>
+  </section>
+  <!-- ============ SEARCH (NL) ============ -->
+  <section class="view" id="view-search">
+    <div class="search-row">
+      <label class="search">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="searchInput2" placeholder="슥, 자연어로 물어보세요" autocomplete="off" />
+        <span class="suk-caret">슥</span>
+      </label>
+      <button class="sort-btn" id="backHome">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+        <span>홈으로</span>
+      </button>
+    </div>
+
+    <div class="nl-query">
+      <div class="nl-query-mark">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      </div>
+      <div class="nl-query-text">
+        <small>시민이 물었어요</small>
+        <div class="q" id="queryEcho"></div>
+      </div>
+    </div>
+
+    <div class="ai-card">
+      <div class="ai-avatar">슥</div>
+      <div class="ai-body">
+        <div class="ai-title">슥법이 정리한 답</div>
+        <div class="ai-text" id="aiText"></div>
+      </div>
+    </div>
+
+    <div class="section-head" style="margin: 16px 0 18px;">
+      <div>
+        <h2 id="resultsTitle">관련 법안</h2>
+        <div class="sub" id="resultsSub">카드 위에 마우스를 올리면 입체적으로 슥 따라와요.</div>
+      </div>
+    </div>
+    <section class="grid" id="searchGrid"></section>
+
+    <div class="examples-head">이런 것도 슥, 물어보세요</div>
+    <div class="example-chips" id="exampleChips"></div>
+  </section>
+</main>
+
+<footer>
+  <div class="disclaimer">
+    슥법은 최신 법안을 시민의 언어로 빠르게 훑어볼 수 있도록 큐레이션하는 디자인 시안입니다.
+    실제 법안 내용·진행 상태는 국회 의안정보시스템 공식 자료를 참고해 주세요.
+  </div>
+  <div>© 2026 슥법 · SSK-Law 시안</div>
+</footer>
+
+<div id="modalRoot"></div>
+
+<!--
+  Script load order matters: data → api → state → router → feature modules → main bootstrap.
+  These are intentionally plain globals (no ES modules) so they can be served as
+  static files without a build step. Wire to a bundler later if you wish.
+-->
+<script src="scripts/data.js"></script>
+<script src="scripts/api.js"></script>
+<script src="scripts/state.js"></script>
+<script src="scripts/router.js"></script>
+<script src="scripts/modal.js"></script>
+<script src="scripts/card3d.js"></script>
+<script src="scripts/ticker.js"></script>
+<script src="scripts/carousel.js"></script>
+<script src="scripts/latest.js"></script>
+<script src="scripts/weekly.js"></script>
+<script src="scripts/search.js"></script>
+<script src="scripts/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+/* Latest page category filter chips */
+  /* ============ FILTERS ============ */
+  .filters { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 18px; scrollbar-width: none; }
+  .filters::-webkit-scrollbar { display: none; }
+  .chip {
+    flex: 0 0 auto; padding: 9px 16px; border-radius: var(--r-pill);
+    background: var(--surface); border: 1px solid var(--line);
+    font-size: 14px; font-weight: 500; color: var(--ink-2);
+    display: inline-flex; align-items: center; gap: 7px;
+    white-space: nowrap;
+    transition: transform .12s ease, background .15s, border-color .15s, color .15s;
+    animation: sukIn .5s var(--ease-suk) backwards;
+  }
+  .chip:hover { background: var(--surface-2); }
+  .chip:active { transform: scale(.97); }
+  .chip.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+  .chip .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ink-4); }
+  .chip.active .dot { background: #fff; opacity: .6; }
+  .chip .count { font-variant-numeric: tabular-nums; opacity: .55; font-size: 12.5px; margin-left: 2px; }

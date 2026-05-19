@@ -1,0 +1,62 @@
+/* Weekly ranking rows */
+  /* ============ WEEKLY ============ */
+  .weekly-list {
+    display: grid; gap: 10px;
+  }
+  .weekly-row {
+    background: var(--surface); border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    padding: 22px 28px;
+    display: grid;
+    grid-template-columns: 80px 1fr auto auto;
+    align-items: center;
+    gap: 24px;
+    cursor: pointer;
+    position: relative; overflow: hidden;
+    transition: transform .3s var(--ease-suk), border-color .3s var(--ease-suk), background-color .3s var(--ease-suk);
+    animation: sukIn .5s var(--ease-suk) var(--delay, 0s) backwards;
+  }
+  .weekly-row::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(90deg, var(--accent-soft) 0%, var(--highlight) 100%);
+    transform: translateX(-101%);
+    transition: transform .55s var(--ease-suk);
+    z-index: 0;
+    pointer-events: none;
+  }
+  .weekly-row:hover::after { transform: translateX(0); }
+  .weekly-row:hover { border-color: var(--accent-soft-2); transform: translateX(4px); }
+  .weekly-row > * { position: relative; z-index: 1; }
+  .weekly-row::before {
+    content: ""; position: absolute; left: 0; top: 16px; bottom: 16px;
+    width: 3px; background: var(--accent);
+    transform: scaleY(0); transform-origin: top;
+    transition: transform .5s var(--ease-suk);
+    z-index: 2;
+  }
+  .weekly-row:hover::before { transform: scaleY(1); }
+  .weekly-rank {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 40px; font-weight: 800; color: var(--ink-4);
+    font-variant-numeric: tabular-nums;
+    line-height: 1; letter-spacing: -0.04em;
+    transition: color .3s;
+  }
+  .weekly-row:hover .weekly-rank { color: var(--accent); }
+  .weekly-row:nth-child(1) .weekly-rank,
+  .weekly-row:nth-child(2) .weekly-rank,
+  .weekly-row:nth-child(3) .weekly-rank { color: var(--ink); }
+  .weekly-row:nth-child(1):hover .weekly-rank,
+  .weekly-row:nth-child(2):hover .weekly-rank,
+  .weekly-row:nth-child(3):hover .weekly-rank { color: var(--accent); }
+  .weekly-body { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+  .weekly-cats { display: flex; gap: 6px; }
+  .weekly-title { font-size: 18px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.35; }
+  .weekly-snip { color: var(--ink-3); font-size: 13.5px; line-height: 1.5; max-width: 60ch;
+    display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+  .weekly-stats { display: flex; flex-direction: column; align-items: end; gap: 4px; font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .weekly-views { font-size: 16px; font-weight: 700; color: var(--ink); }
+  .weekly-trend { font-weight: 700; color: oklch(0.45 0.1 155); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .weekly-trend.down { color: oklch(0.55 0.13 25); }
+  .weekly-go { color: var(--ink-3); transition: transform .3s var(--ease-suk), color .3s; }
+  .weekly-row:hover .weekly-go { color: var(--accent); transform: translateX(6px); }

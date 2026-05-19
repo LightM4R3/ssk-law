@@ -1,0 +1,30 @@
+/* "지금 슥" news ticker marquee */
+  /* ============ TICKER ============ */
+  .ticker { background: var(--ink); color: #fff; overflow: hidden; position: relative; }
+  .ticker-inner { max-width: 1240px; margin: 0 auto; display: grid; grid-template-columns: auto 1fr; align-items: center; padding-left: 32px; }
+  .ticker-label {
+    display: inline-flex; align-items: center; gap: 10px;
+    padding: 10px 22px 10px 0; font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
+    color: rgba(255,255,255,.95); position: relative;
+  }
+  .ticker-label::after { content: ""; position: absolute; right: 0; top: 25%; bottom: 25%; width: 1px; background: rgba(255,255,255,.2); }
+  .ticker-pulse {
+    width: 7px; height: 7px; border-radius: 50%; background: oklch(0.75 0.16 25);
+    animation: tickerPulse 1.4s ease-out infinite;
+  }
+  @keyframes tickerPulse {
+    0% { box-shadow: 0 0 0 0 oklch(0.75 0.16 25 / 0.6); }
+    100% { box-shadow: 0 0 0 9px oklch(0.75 0.16 25 / 0); }
+  }
+  .ticker-viewport {
+    overflow: hidden;
+    mask-image: linear-gradient(90deg, transparent 0, #000 32px, #000 calc(100% - 56px), transparent 100%);
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 32px, #000 calc(100% - 56px), transparent 100%);
+  }
+  .ticker-track { display: inline-flex; gap: 40px; padding: 11px 32px 11px 24px; animation: sukMarquee 42s linear infinite; white-space: nowrap; }
+  .ticker:hover .ticker-track { animation-play-state: paused; }
+  .ticker-item { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; color: rgba(255,255,255,.78); cursor: pointer; transition: color .15s; }
+  .ticker-item:hover { color: #fff; }
+  .ticker-item b { color: #fff; font-weight: 600; }
+  .ticker-item .ti-tag { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,.1); color: rgba(255,255,255,.85); font-weight: 500; }
+  .ticker-item .ti-sep { width: 3px; height: 3px; border-radius: 50%; background: rgba(255,255,255,.3); }
