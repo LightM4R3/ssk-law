@@ -56,20 +56,10 @@ sentiment는 시민 호감도를 0~100 사이 정수로 추정하세요."""
         return None
 
     try:
-        # Try to extract JSON from the response
-        match = None
-        for line in text.split("\n"):
-            line = line.strip()
-            if line.startswith("{"):
-                match = line
-                break
-        if not match:
-            # Try the whole text
-            start = text.find("{")
-            end = text.rfind("}") + 1
-            if start >= 0 and end > start:
-                match = text[start:end]
-        if match:
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start >= 0 and end > start:
+            match = text[start:end]
             return json.loads(match)
     except (json.JSONDecodeError, ValueError) as e:
         logger.warning("Failed to parse Ollama summary JSON: %s", e)

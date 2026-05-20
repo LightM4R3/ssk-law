@@ -1,0 +1,188 @@
+import datetime
+from django.core.management.base import BaseCommand
+from django.utils import timezone
+from django.conf import settings
+import requests
+import logging
+from bills.models import Bill, Category, BillCategory, BillSummary
+from services import ollama
+
+logger = logging.getLogger(__name__)
+
+
+class Command(BaseCommand):
+    help = "Syncs recent bills from the National Assembly API and generates AI summaries."
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--pages",
+            type=int,
+            default=1,
+            help="Number of pages to sync from National Assembly API (default: 1)",
+        )
+
+    def handle(self, *args, **options):
+        pages = options["pages"]
+        self.stdout.write(self.style.WARNING(f"Starting bill sync for {pages} page(s)..."))
+
+        # 1. Ensure categories exist in database (same as seed data)
+        categories_map = self._ensure_categories()
+
+        # 2. Call Assembly API
+        api_key = getattr(settings, "ASSEMBLY_API_KEY", "7ebbc9b78224446d89af859b2117e88e")
+        base_url = "https://open.assembly.go.kr/portal/openapi/nzmimeepazxkubdpn"
+
+        synced_count = 0
+        summarized_count = 0
+
+        for page in range(1, pages + 1):
+            url = f"{base_url}?KEY={api_key}&Type=json&pIndex={page}&pSize=10&AGE=22"
+            self.stdout.write(f"Fetching page {page}...")
+
+            try:
+                resp = requests.get(url, timeout=15)
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(f"Failed to fetch bills list from API: {e}"))
+                break
+
+            bill_data = data.get("nzmimeepazxkubdpn", [])
+            if len(bill_data) <= 1 or "row" not in bill_data[1]:
+                self.stdout.write("No rows found in response.")
+                break
+
+            raw_bills = bill_data[1]["row"]
+            for raw in raw_bills:
+                bill_no = raw.get("BILL_NO")
+                if not bill_no:
+                    continue
+
+                title = raw.get("BILL_NAME", "제목 없음")
+                proposer = raw.get("PROPOSER", "발의자 정보 없음")
+                committee = raw.get("COMMITTEE", "") or raw.get("COMMITTEE_NAME", "") or "미정"
+                detail_link = raw.get("DETAIL_LINK", "")
+                
+                # Parse date
+                propose_dt_str = raw.get("PROPOSE_DT", "")
+                try:
+                    proposed_at = datetime.date.fromisoformat(propose_dt_str)
+                except (ValueError, TypeError):
+                    proposed_at = datetime.date.today()
+
+                # Stage normalization
+                stage_label = raw.get("PROC_RESULT", "") or "발의"
+                stage = self._normalize_stage(stage_label)
+
+                # Save or Update Bill
+                bill, created = Bill.objects.update_or_create(
+                    bill_id=bill_no,
+                    defaults={
+                        "bill_no": bill_no,
+                        "title": title,
+                        "proposer": proposer,
+                        "committee": committee,
+                        "stage": stage,
+                        "proposed_at": proposed_at,
+                        "detail_link": detail_link,
+                        "age": 22,
+                        "synced_at": timezone.now(),
+                    }
+                )
+                
+                action = "Created" if created else "Updated"
+                self.stdout.write(f"  [{action}] Bill {bill_no}: {title[:40]}...")
+                synced_count += 1
+
+                # Map Category based on committee name
+                self._map_categories(bill, committee, categories_map)
+
+                # Generate AI Summary if not exists
+                if not hasattr(bill, "summary"):
+                    self.stdout.write(f"    -> Generating AI Summary for bill {bill_no}...")
+                    summary_dict = ollama.summarize_bill(title, proposer, committee)
+                    if summary_dict:
+                        BillSummary.objects.create(
+                            bill=bill,
+                            summary_1=summary_dict.get("summary_1", ""),
+                            summary_2=summary_dict.get("summary_2", ""),
+                            summary_3=summary_dict.get("summary_3", ""),
+                            impact=summary_dict.get("impact", ""),
+                            sentiment=int(summary_dict.get("sentiment", 50)),
+                            model_name=getattr(settings, "OLLAMA_MODEL", "gemma4:e4b"),
+                        )
+                        self.stdout.write(self.style.SUCCESS(f"    -> AI Summary generated successfully (Sentiment: {summary_dict.get('sentiment')})"))
+                        summarized_count += 1
+                    else:
+                        self.stdout.write(self.style.ERROR(f"    -> AI Summary generation failed for bill {bill_no}"))
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"\nFinished! Synced {synced_count} bills and generated {summarized_count} summaries."
+            )
+        )
+
+    def _ensure_categories(self):
+        categories_seed = [
+            ("labor", "노동", 1),
+            ("welfare", "복지", 2),
+            ("housing", "주거", 3),
+            ("economy", "경제", 4),
+            ("education", "교육", 5),
+            ("env", "환경 · 기후", 6),
+            ("digital", "디지털", 7),
+            ("health", "보건", 8),
+            ("safety", "생활안전", 9),
+        ]
+        cat_map = {}
+        for slug, label, order in categories_seed:
+            cat, _ = Category.objects.update_or_create(
+                slug=slug, defaults={"label": label, "sort_order": order}
+            )
+            cat_map[slug] = cat
+        return cat_map
+
+    def _normalize_stage(self, stage_str):
+        s = stage_str.strip()
+        if "통과" in s or "공포" in s or "가결" in s:
+            return "passed"
+        elif "본회의" in s:
+            return "plenary"
+        elif "위원회" in s or "심사" in s:
+            return "committee"
+        return "proposed"
+
+    def _map_categories(self, bill, committee, categories_map):
+        # Delete old mappings first
+        BillCategory.objects.filter(bill=bill).delete()
+
+        mapped_slugs = []
+        if "환경" in committee or "노동" in committee:
+            mapped_slugs.append("labor")
+            mapped_slugs.append("env")
+        if "보건" in committee or "복지" in committee or "여성" in committee or "가족" in committee:
+            mapped_slugs.append("welfare")
+            mapped_slugs.append("health")
+        if "국토" in committee or "교통" in committee:
+            mapped_slugs.append("housing")
+        if "재정" in committee or "경제" in committee or "정무" in committee or "산업" in committee or "통상" in committee or "벤처" in committee:
+            mapped_slugs.append("economy")
+        if "교육" in committee or "문화" in committee or "체육" in committee or "관광" in committee:
+            mapped_slugs.append("education")
+        if "과학" in committee or "기술" in committee or "정보" in committee or "방송" in committee or "통신" in committee:
+            mapped_slugs.append("digital")
+        if "행정" in committee or "안전" in committee or "국방" in committee or "외교" in committee or "통일" in committee:
+            mapped_slugs.append("safety")
+
+        # Fallback to safety if nothing matches
+        if not mapped_slugs:
+            mapped_slugs.append("safety")
+
+        # Create relationships
+        for i, slug in enumerate(mapped_slugs):
+            if slug in categories_map:
+                BillCategory.objects.create(
+                    bill=bill,
+                    category=categories_map[slug],
+                    is_primary=(i == 0)
+                )

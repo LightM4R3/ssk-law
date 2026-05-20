@@ -123,11 +123,11 @@ REST_FRAMEWORK = {
 # ---------------------------------------------------------------------------
 # External Services
 # ---------------------------------------------------------------------------
-ASSEMBLY_API_KEY = os.environ.get("ASSEMBLY_API_KEY", "")
+ASSEMBLY_API_KEY = os.environ.get("ASSEMBLY_API_KEY", "7ebbc9b78224446d89af859b2117e88e")
 ASSEMBLY_API_BASE_URL = os.environ.get(
     "ASSEMBLY_API_BASE_URL",
     "https://open.assembly.go.kr/portal/openapi",
 )
 
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "llama3.1:8b")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:e4b")
