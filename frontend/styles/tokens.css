@@ -25,7 +25,6 @@
     --r-xl: 28px;
     --r-pill: 999px;
   }
-}
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); }
 body {
@@ -67,4 +66,3 @@ a { color: inherit; text-decoration: none; }
     0%, 100% { transform: translateX(0); opacity: .8; }
     50% { transform: translateX(4px); opacity: 1; }
   }
-

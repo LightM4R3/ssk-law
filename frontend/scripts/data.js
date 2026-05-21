@@ -12,6 +12,21 @@ const CATEGORIES = [
   { id: "safety", label: "생활안전", count: 8 },
 ];
 
+/* Per-category aesthetic + editorial meta.
+   Each gets a unique hue (oklch) but shares chroma/lightness — same family as the
+   global --accent (oklch 0.42 0.08 245), only the hue rotates. */
+const CATEGORY_META = {
+  labor:     { glyph: "勞", sub: "Labor",        hue: 22,  blurb: "일하는 사람의 권리·안전망",    new: 4, hot: true  },
+  welfare:   { glyph: "福", sub: "Welfare",      hue: 145, blurb: "돌봄·소득·복지 안전망",        new: 6, hot: true  },
+  housing:   { glyph: "宅", sub: "Housing",      hue: 285, blurb: "월세·전세·청년 주거 안정",     new: 3, hot: false },
+  economy:   { glyph: "經", sub: "Economy",      hue: 60,  blurb: "소상공인·금융·세제",            new: 5, hot: false },
+  education: { glyph: "敎", sub: "Education",    hue: 200, blurb: "학교·청소년·평생교육",          new: 2, hot: false },
+  env:       { glyph: "綠", sub: "Climate",      hue: 165, blurb: "기후·자원순환·도시 적응",       new: 3, hot: true  },
+  digital:   { glyph: "디", sub: "Digital",      hue: 245, blurb: "플랫폼·AI·개인정보",            new: 4, hot: false },
+  health:    { glyph: "醫", sub: "Health",       hue: 0,   blurb: "의료·공공보건·돌봄",            new: 3, hot: false },
+  safety:    { glyph: "安", sub: "Safety",       hue: 35,  blurb: "교통·재난·생활안전",            new: 2, hot: false },
+};
+
 const STAGES = {
   proposed:  { label: "발의",        cls: "s1", idx: 0 },
   committee: { label: "위원회 심사",  cls: "s2", idx: 1 },
@@ -32,7 +47,6 @@ const PICKS = [
       "주 15시간 이상 일한 경우 연 5일의 유급 휴가를 도입합니다.",
       "플랫폼 기업은 노동자 보호 알고리즘 운영 지침을 매년 공시합니다.",
     ],
-    sentiment: 68, comments: 1284,
     impact: "약 80만 명의 플랫폼 노동자에게 직접 영향. 휴식권·의료 안전망 확대.",
     similar: [
       { title: "특수형태근로종사자 권익 보호법 일부개정안", date: "2026.03.11", stage: "위원회" },
@@ -50,7 +64,6 @@ const PICKS = [
       "지원 기간을 12개월에서 24개월로 늘리고 보증금 대출 이자도 지원합니다.",
       "수도권 외 지역에는 추가 가점을 부여합니다.",
     ],
-    sentiment: 74, comments: 892,
     impact: "지원 대상 약 13만 명 확대 예상.",
     similar: [
       { title: "신혼부부 전세자금 대출 한도 확대법", date: "2026.04.20", stage: "위원회" },
@@ -68,7 +81,6 @@ const PICKS = [
       "급식 재료의 30% 이상은 지역 농산물로 의무 조달합니다.",
       "알레르기·종교적 식단을 위한 대체 메뉴 제공을 의무화합니다.",
     ],
-    sentiment: 81, comments: 1542,
     impact: "전국 중·고생 약 270만 명. 학부모 부담 평균 월 8만 원 절감.",
     similar: [
       { title: "친환경 학교급식 의무 비율 상향법", date: "2026.02.18", stage: "본회의" },
@@ -85,7 +97,6 @@ const PICKS = [
       "결제대행사(PG)의 추가 수수료를 명확히 공시하도록 합니다.",
       "정기적인 수수료 적정성 검증을 도입합니다.",
     ],
-    sentiment: 77, comments: 967,
     impact: "전국 소상공인 약 290만 명 대상. 연간 평균 약 64만 원 절감 추정.",
     similar: [
       { title: "전통시장 카드결제 인프라 지원법", date: "2026.03.15", stage: "위원회" },
@@ -102,7 +113,6 @@ const PICKS = [
       "폭염·침수 취약 지역에 그늘막·녹지 확보 기준을 신설합니다.",
       "5년마다 적응 성과를 의무 공시합니다.",
     ],
-    sentiment: 63, comments: 528,
     impact: "전국 약 30개 광역·기초 지자체에 적용.",
     similar: [
       { title: "도시공원 최저 면적 기준 상향법", date: "2026.02.10", stage: "위원회" },

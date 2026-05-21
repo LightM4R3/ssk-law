@@ -18,6 +18,8 @@
   <link rel="stylesheet" href="styles/filters.css" />
   <link rel="stylesheet" href="styles/cards.css" />
   <link rel="stylesheet" href="styles/weekly.css" />
+  <link rel="stylesheet" href="styles/categories.css" />
+  <link rel="stylesheet" href="styles/similar.css" />
   <link rel="stylesheet" href="styles/search-results.css" />
   <link rel="stylesheet" href="styles/modal.css" />
   <link rel="stylesheet" href="styles/responsive.css" />
@@ -35,8 +37,7 @@
       <a href="#/" data-route="home">홈</a>
       <a href="#/latest" data-route="latest">최신 법안</a>
       <a href="#/weekly" data-route="weekly">인기 법안</a>
-      <a href="#/" data-route="home" style="opacity:.6;pointer-events:none">분야별</a>
-      <a href="#/" data-route="home" style="opacity:.6;pointer-events:none">내 북마크</a>
+      <a href="#/categories" data-route="categories">분야별</a>
     </nav>
     <div class="top-actions">
       <button class="icon-btn" aria-label="알림">
@@ -113,6 +114,15 @@
     <section class="grid" id="grid"></section>
   </section>
 
+  <!-- ============ CATEGORIES HUB ============ -->
+  <section class="view" id="view-categories"></section>
+
+  <!-- ============ CATEGORY DETAIL ============ -->
+  <section class="view" id="view-category"></section>
+
+  <!-- ============ SIMILAR BILLS DETAIL ============ -->
+  <section class="view" id="view-similar"></section>
+
   <!-- ============ WEEKLY ============ -->
   <section class="view" id="view-weekly">
     <div class="section-head">
@@ -137,25 +147,54 @@
       </button>
     </div>
 
-    <div class="nl-query">
-      <div class="nl-query-mark">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+    <!-- query echo + result meta -->
+    <div class="search-header">
+      <div class="search-q">
+        <span class="search-q-eyebrow">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          시민이 물었어요
+        </span>
+        <h1 class="search-q-text" id="queryEcho">—</h1>
       </div>
-      <div class="nl-query-text">
-        <small>시민이 물었어요</small>
-        <div class="q" id="queryEcho"></div>
+      <div class="search-meta">
+        <div class="search-meta-item">
+          <span class="search-meta-label">발견</span>
+          <span class="search-meta-value" id="metaCount">—</span>
+        </div>
+        <div class="search-meta-item">
+          <span class="search-meta-label">소요</span>
+          <span class="search-meta-value"><span id="metaTime">—</span><span class="search-meta-unit">초</span></span>
+        </div>
+        <div class="search-meta-item search-meta-live">
+          <span class="dot-live"></span>
+          슥 AI 모드
+        </div>
       </div>
     </div>
 
-    <div class="ai-card">
+    <!-- AI answer -->
+    <article class="ai-card">
       <div class="ai-avatar">슥</div>
       <div class="ai-body">
-        <div class="ai-title">슥법이 정리한 답</div>
+        <div class="ai-head">
+          <div class="ai-title">슥법이 정리한 답</div>
+          <div class="ai-badge" id="aiBadge">법안 데이터 기반</div>
+        </div>
         <div class="ai-text" id="aiText"></div>
+        <div class="ai-keywords" id="aiKeywords"></div>
+      </div>
+    </article>
+
+    <!-- refine + results header -->
+    <div class="refine-row">
+      <div class="refine-chips" id="refineChips"></div>
+      <div class="refine-sort">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M6 12h12M10 18h4"/></svg>
+        <span>관련도 순</span>
       </div>
     </div>
 
-    <div class="section-head" style="margin: 16px 0 18px;">
+    <div class="section-head" style="margin: 6px 0 18px;">
       <div>
         <h2 id="resultsTitle">관련 법안</h2>
         <div class="sub" id="resultsSub">카드 위에 마우스를 올리면 입체적으로 슥 따라와요.</div>
@@ -163,7 +202,33 @@
     </div>
     <section class="grid" id="searchGrid"></section>
 
-    <div class="examples-head">이런 것도 슥, 물어보세요</div>
+    <!-- follow-up -->
+    <div class="followup" id="followup">
+      <div class="followup-head">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4l3 2"/></svg>
+        이어서, 이렇게도 물어볼 수 있어요
+      </div>
+      <div class="followup-chips" id="followupChips"></div>
+    </div>
+
+    <!-- feedback -->
+    <div class="feedback" id="feedback">
+      <span class="feedback-label">이 답변, 도움이 됐나요?</span>
+      <button class="fb-btn" data-fb="up">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 10v12M15 5.88L14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H7"/></svg>
+          도움됐어요
+      </button>
+      <button class="fb-btn" data-fb="down">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 14V2M9 18.12L10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H17"/></svg>
+        아쉬워요
+      </button>
+      <button class="fb-btn fb-btn-ghost" data-fb="report">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><circle cx="12" cy="12" r="10"/></svg>
+        잘못된 정보 신고
+      </button>
+    </div>
+
+    <div class="examples-head">처음이라면, 이런 질문부터</div>
     <div class="example-chips" id="exampleChips"></div>
   </section>
 </main>
@@ -193,6 +258,8 @@
 <script src="scripts/carousel.js"></script>
 <script src="scripts/latest.js"></script>
 <script src="scripts/weekly.js"></script>
+<script src="scripts/categories.js"></script>
+<script src="scripts/similar.js"></script>
 <script src="scripts/search.js"></script>
 <script src="scripts/main.js"></script>
 </body>

@@ -97,6 +97,14 @@ If this endpoint is missing, the frontend computes category counts from `/api/bi
 
 If this endpoint is missing, the frontend keeps the sample weekly ranking.
 
+## Frontend Routes Backed By These Fields
+
+- `#/categories` uses `categories` plus category ids found in bill `categories`.
+- `#/categories/:id` shows bills whose category `id` matches `:id`.
+- `#/picks/:id/similar` uses the selected bill's `similar` array.
+
+No extra endpoint is required for the first version of the category or similar-bill pages.
+
 ## Stage Values
 
 Preferred values:

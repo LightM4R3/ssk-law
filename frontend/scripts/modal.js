@@ -49,8 +49,8 @@ function openModal(id) {
           <div class="modal-section">
             <h4>유사 법안 ${b.similar.length}건</h4>
             <div class="similar">
-              ${b.similar.map(s => `
-                <div class="similar-item">
+              ${b.similar.map((s, si) => `
+                <div class="similar-item" data-parent="${b.id}" data-idx="${si}">
                   <div>
                     <div class="similar-title">${s.title}</div>
                     <div class="similar-meta">${s.date} · ${s.stage}</div>
@@ -82,6 +82,14 @@ function openModal(id) {
   document.body.style.overflow = "hidden";
   $("#ov").addEventListener("click", (e) => { if (e.target.id === "ov") close(); });
   $("#closeBtn").addEventListener("click", close);
+  // similar-item click: open the dedicated similar modal
+  $$(".similar-item", root).forEach(el => {
+    el.addEventListener("click", () => {
+      close();
+      openSimilarModal(el.dataset.parent, +el.dataset.idx);
+    });
+    el.style.cursor = "pointer";
+  });
   document.addEventListener("keydown", function esc(e){ if (e.key === "Escape") { close(); document.removeEventListener("keydown", esc); } });
 }
 

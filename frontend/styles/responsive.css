@@ -5,6 +5,8 @@
     .span-3, .span-2, .span-4, .span-6 { grid-column: span 2; }
     .pick { padding: 32px; }
     .pick h2 { font-size: 28px; }
+    .pick-body { grid-template-columns: 1fr; gap: 24px; }
+    .pick-side { order: 2; }
     .pick-foot { grid-template-columns: 1fr; gap: 20px; }
     .pick-stat { text-align: left; }
     .weekly-row { grid-template-columns: 56px 1fr; gap: 16px; padding: 18px 20px; }

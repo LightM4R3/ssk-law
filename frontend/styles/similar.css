@@ -1,0 +1,219 @@
+/* Similar-bills detail page + similar-bill modal extensions. */
+
+/* ============ BREADCRUMB (above hero) ============ */
+.similar-crumb {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 600; color: var(--ink-3);
+  padding: 8px 14px 8px 10px;
+  margin: 0 0 14px;
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  cursor: pointer;
+  transition: color .15s, background .15s, border-color .15s, transform .12s var(--ease-suk);
+}
+.similar-crumb:hover {
+  color: var(--ink); background: var(--surface-2);
+  border-color: var(--line-strong);
+}
+.similar-crumb:hover svg { transform: translateX(-2px); }
+.similar-crumb:active { transform: scale(.97); }
+.similar-crumb svg { transition: transform .25s var(--ease-suk); }
+
+/* ============ HERO ON SIMILAR PAGE ============ */
+.similar-hero { align-items: stretch; }
+.similar-hero-eyebrow {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11.5px; font-weight: 700; color: var(--cat-ink);
+  letter-spacing: 0.04em; text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.similar-hero .cat-hero-text h1 {
+  font-size: 28px; letter-spacing: -0.025em; line-height: 1.25;
+  text-wrap: pretty;
+  margin-bottom: 12px;
+}
+
+/* category tag row — primary identifier of the bill's field(s) */
+.similar-hero-cats {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  margin: 0 0 14px;
+}
+.similar-hero-cats .tag {
+  font-size: 12.5px; font-weight: 700;
+  padding: 5px 12px; border-radius: var(--r-pill);
+  background: rgba(255,255,255,.7); color: var(--cat-ink);
+  border: 1px solid oklch(0.88 0.06 var(--cat-h, 245));
+  letter-spacing: -0.005em;
+  transition: transform .12s var(--ease-suk), background .15s;
+}
+.similar-hero-cats .tag.accent {
+  background: var(--cat-ink); color: #fff;
+  border-color: var(--cat-ink);
+}
+.similar-hero-cats .tag:hover { transform: translateY(-1px); }
+
+.similar-hero-meta {
+  display: flex; flex-wrap: wrap; gap: 16px;
+  font-size: 13px; color: var(--ink-2);
+  margin: 0 0 4px;
+}
+.similar-hero-meta b { color: var(--ink); font-weight: 600; margin-right: 4px; }
+.similar-hero-stage {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-weight: 600;
+}
+.similar-hero-cta {
+  margin-top: auto;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 10px 14px; border-radius: var(--r-pill);
+  background: var(--cat-ink); color: #fff;
+  font-size: 13px; font-weight: 700;
+  white-space: nowrap;
+  transition: filter .2s;
+}
+.similar-hero-cta:hover { filter: brightness(1.1); }
+.similar-hero-cta svg { transition: transform .25s var(--ease-suk); }
+.similar-hero-cta:hover svg { transform: translateX(3px); }
+
+/* ============ SIMILAR-BILLS GRID ============ */
+.similar-grid {
+  display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px;
+}
+.similar-card {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--r-md); padding: 22px;
+  display: flex; flex-direction: column; gap: 12px;
+  position: relative; overflow: hidden;
+  cursor: pointer;
+  transition: transform .35s var(--ease-suk), border-color .25s,
+              box-shadow .35s var(--ease-suk), background .25s;
+  box-shadow: var(--shadow-sm);
+  animation: sukIn .55s var(--ease-suk) var(--delay, 0s) backwards;
+}
+.similar-card::before {
+  content: ""; position: absolute; left: 0; right: 0; top: 0; height: 2px;
+  background: var(--accent);
+  transform: scaleX(0); transform-origin: left;
+  transition: transform .5s var(--ease-suk);
+}
+.similar-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--accent-soft-2);
+  box-shadow: var(--shadow-md);
+}
+.similar-card:hover::before { transform: scaleX(1); }
+.similar-card-top {
+  display: flex; align-items: center; justify-content: space-between;
+}
+.similar-card-num {
+  font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 12px; font-weight: 700; color: var(--ink-4);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+.similar-card-stage {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 700; color: var(--ink-2);
+}
+.similar-card-title {
+  margin: 0; font-size: 18px; line-height: 1.35;
+  letter-spacing: -0.02em; font-weight: 700;
+  text-wrap: pretty;
+}
+.similar-card-cats { display: flex; flex-wrap: wrap; gap: 6px; }
+.similar-card-foot {
+  margin-top: auto; padding-top: 12px;
+  border-top: 1px dashed var(--line);
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12.5px; color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.similar-card-cta {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-weight: 700; color: var(--accent-ink);
+  opacity: 0; transform: translateX(-6px);
+  transition: opacity .25s var(--ease-suk), transform .35s var(--ease-suk);
+}
+.similar-card:hover .similar-card-cta { opacity: 1; transform: translateX(0); }
+
+.similar-empty {
+  padding: 64px 24px; text-align: center;
+  color: var(--ink-3); font-size: 14.5px;
+  border: 1px dashed var(--line); border-radius: var(--r-md);
+}
+
+/* ============ SIMILAR-BILL MODAL EXTRAS ============ */
+/* parent-bill card embedded inside the similar modal */
+.sim-parent {
+  background: linear-gradient(135deg, var(--accent-soft) 0%, var(--surface) 100%);
+  border: 1px solid var(--accent-soft-2);
+  border-radius: var(--r-md);
+  padding: 18px;
+  display: flex; flex-direction: column; gap: 10px;
+  cursor: pointer;
+  position: relative; overflow: hidden;
+  transition: transform .25s var(--ease-suk), box-shadow .3s var(--ease-suk),
+              border-color .2s;
+}
+.sim-parent::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: var(--accent); transform: scaleY(0); transform-origin: top;
+  transition: transform .35s var(--ease-suk);
+}
+.sim-parent:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--accent);
+}
+.sim-parent:hover::before { transform: scaleY(1); }
+.sim-parent-top {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+}
+.sim-parent-stage {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 700; color: var(--ink-2);
+}
+.sim-parent-title {
+  font-size: 17px; font-weight: 700; letter-spacing: -0.02em;
+  line-height: 1.35; color: var(--ink); text-wrap: pretty;
+}
+.sim-parent-summary {
+  font-size: 13.5px; color: var(--ink-2); line-height: 1.5;
+}
+.sim-parent-foot {
+  display: flex; justify-content: space-between; align-items: center;
+  font-size: 12.5px; color: var(--ink-3);
+  padding-top: 8px; border-top: 1px dashed var(--accent-soft-2);
+}
+.sim-parent-cta {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-weight: 700; color: var(--accent-ink);
+}
+.sim-parent-cta svg { transition: transform .25s var(--ease-suk); }
+.sim-parent:hover .sim-parent-cta svg { transform: translateX(3px); }
+
+/* pending notice — honest about missing data */
+.sim-pending {
+  display: flex; align-items: flex-start; gap: 12px;
+  padding: 14px 16px; border-radius: var(--r-md);
+  background: var(--surface-2); border: 1px dashed var(--line-strong);
+}
+.sim-pending-icon {
+  flex: 0 0 auto; width: 32px; height: 32px; border-radius: 50%;
+  background: var(--surface); color: var(--ink-3);
+  display: grid; place-items: center;
+}
+.sim-pending-title {
+  font-size: 13.5px; font-weight: 700; color: var(--ink);
+  margin-bottom: 2px;
+}
+.sim-pending-text {
+  font-size: 12.5px; color: var(--ink-3); line-height: 1.5;
+}
+
+@media (max-width: 980px) {
+  .similar-grid { grid-template-columns: 1fr; }
+  .similar-hero .cat-hero-text h1 { font-size: 22px; }
+  .similar-hero-cta { align-self: flex-start; }
+}
