@@ -4,14 +4,18 @@ import json
 import urllib.request
 import urllib.parse
 
-BASE_URL = "http://localhost:8000"
+import sys
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
+
+BASE_URL = "http://127.0.0.1:8000"
 
 
 def http_get(url_path):
     url = f"{BASE_URL}{url_path}"
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
     try:
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             data = resp.read().decode("utf-8")
             return resp.status, json.loads(data)
     except urllib.error.HTTPError as e:
@@ -30,7 +34,7 @@ def http_post(url_path, payload):
         method="POST"
     )
     try:
-        with urllib.request.urlopen(req) as resp:
+        with urllib.request.urlopen(req, timeout=30) as resp:
             resp_data = resp.read().decode("utf-8")
             return resp.status, json.loads(resp_data)
     except urllib.error.HTTPError as e:
@@ -86,10 +90,16 @@ def test_bills():
 
 
 def test_bill_detail():
-    print("\nTesting GET /api/bills/PRC_P1...")
-    status, data = http_get("/api/bills/PRC_P1")
+    # Get a real bill_id dynamically from the bills list
+    status, data = http_get("/api/bills")
+    assert status == 200, f"Failed to get bills list: {status}, {data}"
+    assert "bills" in data and data["bills"], "No bills available to test detail view"
+    bill_id = data["bills"][0]["id"]
+
+    print(f"\nTesting GET /api/bills/{bill_id}...")
+    status, data = http_get(f"/api/bills/{bill_id}")
     assert status == 200, f"Failed: {status}, {data}"
-    assert data["id"] == "PRC_P1", f"Incorrect id returned: {data['id']}"
+    assert data["id"] == bill_id, f"Incorrect id returned: {data['id']}"
     print(f"  Success: Detailed bill '{data['title']}' loaded.")
     print(f"    Committee: {data['committee']}")
     print(f"    Similar Bills: {[s['title'] for s in data['similar']]}")

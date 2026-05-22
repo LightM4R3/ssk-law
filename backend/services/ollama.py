@@ -30,32 +30,34 @@ def _call_ollama(prompt: str, system: str = "") -> str | None:
         return None
 
 
-def summarize_bill(title: str, proposer: str, committee: str = "") -> dict | None:
-    """Generate a 3-line summary + impact + sentiment + categories for a bill.
+def summarize_bill(title: str, proposer: str, committee: str = "", content: str = "") -> dict | None:
+    """Generate a 3-line summary + impact + categories for a bill.
 
-    Returns dict with keys: summary_1, summary_2, summary_3, impact, sentiment, categories
+    Returns dict with keys: summary_1, summary_2, summary_3, impact, categories
     or None on failure.
     """
     system = (
         "당신은 시민에게 한국 법안을 친근하게 설명하고 분류하는 '슥법'의 AI 어시스턴트입니다. "
         "반드시 JSON으로만 응답하세요."
     )
+    bill_info = f"법안명: {title}\n발의자: {proposer}\n소관위원회: {committee or '미정'}"
+    if content:
+        bill_info += f"\n상세 제안이유 및 주요 내용:\n{content}"
+
     prompt = f"""아래 법안을 시민이 쉽게 이해할 수 있도록 요약하고 어울리는 카테고리로 분류해주세요.
 
-법안명: {title}
-발의자: {proposer}
-소관위원회: {committee or '미정'}
+{bill_info}
 
-분류 가능한 카테고리 후보(슬러그 및 설명):
-- labor (노동)
-- welfare (복지)
-- housing (주거)
-- economy (경제)
-- education (교육)
-- env (환경 · 기후)
-- digital (디지털)
-- health (보건)
-- safety (생활안전)
+분류 가능한 카테고리는 프론트엔드의 10대 분류 태그 중 '전체'를 제외한 아래 9개 후보군이며, 이들 중 가장 부합하는 것을 선택해야 합니다:
+- labor (노동): 근로자 권리, 노동환경, 일자리, 고용 등과 관련된 법안
+- welfare (복지): 기초생활보장, 아동/청소년/가족/노인 복지, 사회보장 등과 관련된 법안
+- housing (주거): 주택 건설, 부동산, 월세/전세 지원, 도시 재생 등과 관련된 법안
+- economy (경제): 금융, 기업 규제, 소상공인 지원, 세금, 산업 정책 등과 관련된 법안
+- education (교육): 학교, 보육, 평생교육, 교원 권리 등과 관련된 법안
+- env (환경 · 기후): 기후변화, 탄소배출, 폐기물, 자연보호 등과 관련된 법안
+- digital (디지털): IT, 인공지능, 통신, 개인정보보호, 온라인 플랫폼 등과 관련된 법안
+- health (보건): 의료, 약학, 공공보건, 감염병 예방 등과 관련된 법안
+- safety (생활안전): 소방, 재난안전, 범죄예방, 교통안전 등과 관련된 법안
 
 반드시 아래 JSON 형식으로만 응답하세요 (다른 텍스트 절대 금지):
 {{
@@ -63,11 +65,9 @@ def summarize_bill(title: str, proposer: str, committee: str = "") -> dict | Non
   "summary_2": "두 번째 요약 문장",
   "summary_3": "세 번째 요약 문장",
   "impact": "예상 영향",
-  "sentiment": 70,
   "categories": ["카테고리슬러그1", "카테고리슬러그2"]
 }}
 
-- sentiment는 시민 호감도를 0~100 사이 정수로 추정하세요.
 - categories는 위 후보군(labor, welfare, housing, economy, education, env, digital, health, safety) 중 가장 깊이 연관된 1~2개 슬러그를 선택하여 JSON 배열로 리턴하세요. 없는 경우 빈 배열을 리턴하세요."""
 
     text = _call_ollama(prompt, system)
