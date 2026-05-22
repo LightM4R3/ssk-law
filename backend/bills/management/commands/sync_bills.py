@@ -74,6 +74,16 @@ class Command(BaseCommand):
                 stage_label = raw.get("PROC_RESULT", "") or "발의"
                 stage = self._normalize_stage(stage_label)
 
+                # Prevent downgrade: only update to a new stage if it is higher/forward
+                try:
+                    existing_bill = Bill.objects.get(bill_id=bill_no)
+                    existing_stage = existing_bill.stage
+                    stage_order = {"proposed": 1, "committee": 2, "plenary": 3, "passed": 4}
+                    if stage_order.get(stage, 1) < stage_order.get(existing_stage, 1):
+                        stage = existing_stage  # Keep the higher stage
+                except Bill.DoesNotExist:
+                    pass
+
                 # Save or Update Bill
                 bill, created = Bill.objects.update_or_create(
                     bill_id=bill_no,
@@ -98,6 +108,10 @@ class Command(BaseCommand):
                 if not BillCategory.objects.filter(bill=bill).exists():
                     self.stdout.write(f"    -> Mapped categories via committee fallback: {committee}")
                     self._map_categories(bill, committee, categories_map)
+
+        # 4. Sync Judiciary Committee and Plenary stages
+        self._sync_committee_stages(api_key)
+        self._sync_plenary_stages(api_key)
 
         self.stdout.write(
             self.style.SUCCESS(
@@ -169,3 +183,98 @@ class Command(BaseCommand):
                     category=categories_map[slug],
                     is_primary=(i == 0)
                 )
+
+    def _sync_committee_stages(self, api_key):
+        """법사위 처리 API를 호출하여 대상 법안의 단계를 plenary(본회의 상정)로 업데이트합니다."""
+        url = "https://open.assembly.go.kr/portal/openapi/TVBPMBILL11"
+        self.stdout.write(self.style.WARNING("Starting Judiciary Committee (법사위) stage synchronization..."))
+        
+        params = {
+            "KEY": api_key,
+            "Type": "json",
+            "pIndex": 1,
+            "pSize": 50,
+            "AGE": 22
+        }
+        
+        try:
+            resp = requests.get(url, params=params, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"Failed to fetch committee bills from API: {e}"))
+            return
+
+        bill_data = data.get("TVBPMBILL11", [])
+        if len(bill_data) <= 1 or "row" not in bill_data[1]:
+            self.stdout.write("No committee rows found in response.")
+            return
+
+        raw_bills = bill_data[1]["row"]
+        updated_count = 0
+        
+        for raw in raw_bills:
+            bill_no = raw.get("BILL_NO")
+            if not bill_no:
+                continue
+                
+            law_proc_result = raw.get("LAW_PROC_RESULT_CD", "") or ""
+            law_proc_dt = raw.get("LAW_PROC_DT", "")
+            
+            # 법사위에서 처리가 완료되었거나 일정이 있는 경우 plenary(본회의 상정)로 업데이트
+            if law_proc_dt or law_proc_result:
+                target_bills = Bill.objects.filter(bill_no=bill_no, stage__in=["proposed", "committee"])
+                for bill in target_bills:
+                    bill.stage = "plenary"
+                    bill.save()
+                    self.stdout.write(f"  [Judiciary Stage Update] Bill {bill_no} stage advanced to plenary.")
+                    updated_count += 1
+                    
+        self.stdout.write(self.style.SUCCESS(f"Finished Judiciary Committee sync. Updated {updated_count} bills."))
+
+    def _sync_plenary_stages(self, api_key):
+        """본회의 처리 API를 호출하여 대상 법안의 단계를 passed(통과 · 공포)로 업데이트합니다."""
+        url = "https://open.assembly.go.kr/portal/openapi/nwbpacrgavhjryiph"
+        self.stdout.write(self.style.WARNING("Starting Plenary (본회의) stage synchronization..."))
+        
+        params = {
+            "KEY": api_key,
+            "Type": "json",
+            "pIndex": 1,
+            "pSize": 50,
+            "AGE": 22
+        }
+        
+        try:
+            resp = requests.get(url, params=params, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"Failed to fetch plenary bills from API: {e}"))
+            return
+
+        bill_data = data.get("nwbpacrgavhjryiph", [])
+        if len(bill_data) <= 1 or "row" not in bill_data[1]:
+            self.stdout.write("No plenary rows found in response.")
+            return
+
+        raw_bills = bill_data[1]["row"]
+        updated_count = 0
+        
+        for raw in raw_bills:
+            bill_no = raw.get("BILL_NO")
+            if not bill_no:
+                continue
+                
+            proc_result = raw.get("PROC_RESULT_CD", "") or ""
+            
+            # 본회의 의결결과가 존재하고 가결 취지인 경우 passed로 업데이트
+            if "가결" in proc_result or proc_result in ["수정가결", "원안가결"]:
+                target_bills = Bill.objects.filter(bill_no=bill_no, stage__in=["proposed", "committee", "plenary"])
+                for bill in target_bills:
+                    bill.stage = "passed"
+                    bill.save()
+                    self.stdout.write(f"  [Plenary Stage Update] Bill {bill_no} stage advanced to passed.")
+                    updated_count += 1
+                    
+        self.stdout.write(self.style.SUCCESS(f"Finished Plenary sync. Updated {updated_count} bills."))
