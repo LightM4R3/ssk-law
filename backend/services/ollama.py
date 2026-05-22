@@ -127,7 +127,11 @@ def chat_reply(message: str, context: str, history: str = "") -> str | None:
     system = (
         "당신은 시민에게 한국 법안을 친근하게 설명하는 '슥법'의 AI 법률 어시스턴트입니다. "
         "친근한 반말로 답변하세요. 정확한 법률 정보를 바탕으로 답변하되, "
-        "전문 용어는 쉬운 말로 풀어 설명하세요."
+        "전문 용어는 쉬운 말로 풀어 설명하세요.\n\n"
+        "[서술 지침 - 단정적 표현 금지]\n"
+        "법적 해석에 대해 단정적인 표현('~야', '~입니다', '~가 확실해', '~가 맞아' 등)을 절대로 사용하지 마세요. "
+        "대신 '~로 예상돼', '~할 가능성이 있어', '~라고 해석될 수 있어', '~라는 전례가 있지만 구체적인 상황에 따라 달라질 수 있어' 등 "
+        "중립적이고 신중한 표현을 사용해야 합니다."
     )
     prompt_parts = []
     if context:
@@ -138,3 +142,45 @@ def chat_reply(message: str, context: str, history: str = "") -> str | None:
 
     text = _call_ollama("\n".join(prompt_parts), system)
     return text
+
+
+def analyze_user_query(message: str) -> dict | None:
+    """사용자의 자연어 질문을 분석하여 상황 요약, 쟁점, 키워드, 위험도를 추출합니다."""
+    system = (
+        "당신은 사용자의 법률 질문을 분석하여 구조화된 정보로 반환하는 AI 분석기입니다. "
+        "반드시 JSON으로만 응답해야 하며, 다른 텍스트는 절대 금지합니다."
+    )
+    
+    prompt = f"""아래의 사용자 법률 관련 질문을 분석하여 상황 요약, 법적 쟁점, 검색용 키워드, 그리고 위험도를 추출해 주세요.
+
+[사용자 질문]
+"{message}"
+
+반드시 아래 JSON 형식으로만 응답하세요 (다른 텍스트 절대 금지):
+{{
+  "summary": "사용자가 처한 상황에 대한 1~2문장의 객관적 요약",
+  "issue": "사용자가 겪고 있는 법적 핵심 쟁점이나 질문 사항",
+  "keywords": ["법령 및 발의안 검색에 유용한 핵심 명사 키워드 2~3개"],
+  "risk_level": "High 또는 Medium 또는 Low"
+}}
+
+[위험도(risk_level) 판단 기준]
+- High: 법 회피, 범죄 모의, 증거 인멸, 사기 수법 문의, 불법 행위 조력 등 위법하거나 부당한 행위를 꾀하는 질문.
+- Medium: 소송이나 분쟁에 대한 공격적 대처 방법, 다소 경계선 상의 행위에 대한 조언 요구.
+- Low: 단순 법률 절차 문의, 일상적인 피해 구제 방법 상담(예: 보증금 미반환 대처, 부당해고 구제 절차 등), 일반적인 법안/법령 정보 질문.
+"""
+
+    text = _call_ollama(prompt, system)
+    if not text:
+        return None
+
+    try:
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start >= 0 and end > start:
+            match = text[start:end]
+            return json.loads(match)
+    except (json.JSONDecodeError, ValueError) as e:
+        logger.warning("Failed to parse query analysis JSON: %s", e)
+
+    return None

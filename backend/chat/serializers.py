@@ -21,6 +21,7 @@ class ChatResponseSerializer(serializers.Serializer):
     session_key = serializers.CharField()
     reply = serializers.CharField()
     related_bills = RelatedBillSerializer(many=True)
+    snapshot = serializers.JSONField(required=False, allow_null=True)
 
 
 class ChatMessageSerializer(serializers.Serializer):
@@ -29,6 +30,7 @@ class ChatMessageSerializer(serializers.Serializer):
     role = serializers.CharField()
     content = serializers.CharField()
     related_bills = serializers.SerializerMethodField()
+    snapshot = serializers.JSONField(required=False, allow_null=True)
     created_at = serializers.DateTimeField()
 
     def get_related_bills(self, obj):

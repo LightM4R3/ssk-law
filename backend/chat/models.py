@@ -29,6 +29,7 @@ class ChatMessage(models.Model):
     role = models.CharField(max_length=10, choices=ROLE_CHOICES)
     content = models.TextField()
     related_bill_ids = models.TextField(blank=True, default="", help_text="JSON array string")
+    snapshot = models.JSONField(blank=True, null=True, help_text="질문 구조화 분석 결과 스냅샷")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

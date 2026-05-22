@@ -6,11 +6,13 @@ import uuid
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from django.db.models import Q
 
 from bills.models import Bill, BillSummary
 from .models import ChatMessage, ChatSession
 from .serializers import ChatMessageSerializer, ChatRequestSerializer
-from services.ollama import chat_reply
+from .masking import mask_personal_info
+from services.ollama import chat_reply, analyze_user_query
 
 
 # ---------------------------------------------------------------------------
@@ -29,16 +31,89 @@ def chat_view(request):
     session_key = ser.validated_data.get("session_key") or str(uuid.uuid4())
     message = ser.validated_data["message"]
 
-    # Get or create session
+    # 1. 개인정보 마스킹 처리
+    masked_message = mask_personal_info(message)
+
+    # 2. Get or create session
     session, _ = ChatSession.objects.get_or_create(session_key=session_key)
 
-    # Save user message
-    ChatMessage.objects.create(session=session, role="user", content=message)
+    # 3. Zero-shot 구조화 분석
+    analysis = analyze_user_query(masked_message)
+    if not analysis:
+        # LLM 분석 실패 시 기본 구조화 정보 생성
+        analysis = {
+            "summary": "구조화 분석 실패",
+            "issue": "구조화 분석 실패",
+            "keywords": [],
+            "risk_level": "Low"
+        }
 
-    # Build context from bills DB
-    context = _build_bill_context()
+    # 4. 위험 질문 차단 검사 (법 회피·범죄·증거 인멸)
+    dangerous_keywords = [
+        '마약', '탈세', '증거인멸', '증거 인멸', '블랙박스 삭제', '블랙박스 영상 삭제', 
+        '필로폰', '대마', '안 걸리는', '피하는 팁', '세무조사 피', '영구 삭제', 
+        '카카오톡 삭제', '대화 삭제', '대화 내역 삭제', '카카오톡 대화 내역', '거래 시 안',
+        '처벌 수위를 낮추기 위해 블랙박스'
+    ]
 
-    # Build history from recent messages
+    is_dangerous = False
+    
+    # 위험도 레벨이 HIGH인 경우
+    risk_level = str(analysis.get("risk_level", "Low")).strip().upper()
+    if risk_level == "HIGH":
+        is_dangerous = True
+
+    # 질문 원본 또는 요약/쟁점에 위험 키워드가 포함된 경우
+    text_to_check = (masked_message + " " + str(analysis.get("summary", "")) + " " + str(analysis.get("issue", ""))).lower()
+    for dk in dangerous_keywords:
+        if dk.lower() in text_to_check:
+            is_dangerous = True
+            analysis["risk_level"] = "High"  # 강제 위험도 업그레이드
+            break
+
+    if is_dangerous:
+        # 차단 답변 구성
+        reply_text = "범죄 모의, 증거 인멸, 법망 회피 등 위법 행위와 관련된 질문에는 답변을 제공할 수 없습니다."
+        
+        # DB 저장 (마스킹된 질문 및 차단 답변)
+        ChatMessage.objects.create(session=session, role="user", content=masked_message)
+        ChatMessage.objects.create(
+            session=session,
+            role="assistant",
+            content=reply_text,
+            related_bill_ids=json.dumps([]),
+            snapshot=analysis
+        )
+
+        return Response(
+            {
+                "session_key": session_key,
+                "reply": reply_text,
+                "related_bills": [],
+                "snapshot": analysis
+            }
+        )
+
+    # 5. 관련 법안/법령 검색
+    keywords = analysis.get("keywords", [])
+    related_bills = _search_bills_by_keywords(keywords)
+
+    # 6. context 구축 (검색 결과가 있으면 이를 바탕으로, 없으면 전체 법안 중 일부로 폴백)
+    if related_bills:
+        context_lines = []
+        for b in related_bills:
+            cats = ", ".join(bc.category.label for bc in b.bill_categories.all())
+            summary = ""
+            try:
+                summary = b.summary.summary_1
+            except BillSummary.DoesNotExist:
+                pass
+            context_lines.append(f"- [{b.bill_id}] {b.title} ({cats}) - {summary[:80]}")
+        context = "\n".join(context_lines)
+    else:
+        context = _build_bill_context()
+
+    # 7. Build history
     recent = session.messages.order_by("-created_at")[:10]
     history_lines = []
     for msg in reversed(list(recent)):
@@ -46,8 +121,8 @@ def chat_view(request):
         history_lines.append(f"{prefix}: {msg.content}")
     history = "\n".join(history_lines)
 
-    # Call AI
-    reply_text = chat_reply(message, context, history)
+    # 8. AI 답변 생성 (단정 표현 방지 지침 적용된 프롬프트 사용)
+    reply_text = chat_reply(masked_message, context, history)
 
     if not reply_text:
         reply_text = (
@@ -55,17 +130,21 @@ def chat_view(request):
             "잠시 뒤에 다시 시도해 주세요!\n\n"
             "그 사이에 최신 법안을 한번 둘러보는 건 어때요?"
         )
+    
+    # Disclaimer 자동 삽입
+    DISCLAIMER = "\n\n---\n*면책조항: 본 답변은 참고용 법률 정보 및 국회 발의안 데이터에 기반하여 제공되는 것이며, 어떠한 법적 효력이나 공식적인 법률 자문을 대신할 수 없습니다. 구체적인 사안에 대해서는 반드시 법률 전문가와 상담하시기 바랍니다.*"
+    reply_text = reply_text + DISCLAIMER
 
-    # Find related bills mentioned in the response
-    related = _extract_related_bills(reply_text)
-
-    # Save assistant message
-    related_ids_json = json.dumps([b.bill_id for b in related]) if related else ""
+    # 9. DB 저장 전 마스킹 확인 및 최종 저장
+    ChatMessage.objects.create(session=session, role="user", content=masked_message)
+    
+    related_ids_json = json.dumps([b.bill_id for b in related_bills]) if related_bills else json.dumps([])
     ChatMessage.objects.create(
         session=session,
         role="assistant",
         content=reply_text,
         related_bill_ids=related_ids_json,
+        snapshot=analysis
     )
 
     return Response(
@@ -73,8 +152,9 @@ def chat_view(request):
             "session_key": session_key,
             "reply": reply_text,
             "related_bills": [
-                {"id": b.bill_id, "title": b.title} for b in related
+                {"id": b.bill_id, "title": b.title} for b in related_bills
             ],
+            "snapshot": analysis
         }
     )
 
@@ -130,13 +210,15 @@ def _build_bill_context() -> str:
     return "\n".join(lines)
 
 
-def _extract_related_bills(reply_text: str) -> list:
-    """Try to find bill titles mentioned in the AI reply."""
-    bills = Bill.objects.all()[:50]
-    found = []
-    for b in bills:
-        # Check if any significant part of the title appears in the reply
-        short_title = b.title[:15]
-        if short_title and short_title in reply_text:
-            found.append(b)
-    return found[:5]
+def _search_bills_by_keywords(keywords: list) -> list:
+    """분석된 키워드를 활용해 법안 DB를 검색합니다."""
+    if not keywords:
+        return []
+    
+    query = Q()
+    for kw in keywords:
+        if kw:
+            query |= Q(title__icontains=kw) | Q(summary__summary_1__icontains=kw)
+            
+    # 관련 법안 최대 5개 매칭
+    return list(Bill.objects.filter(query).prefetch_related("bill_categories__category").distinct()[:5])
