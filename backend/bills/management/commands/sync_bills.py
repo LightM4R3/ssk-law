@@ -94,14 +94,15 @@ class Command(BaseCommand):
                 self.stdout.write(f"  [{action}] Bill {bill_no}: {title[:40]}...")
                 synced_count += 1
 
-                # Map Category based on committee name
-                self._map_categories(bill, committee, categories_map)
+                # Generate AI Summary and Map Categories
+                has_summary = hasattr(bill, "summary")
+                llm_mapped = False
 
-                # Generate AI Summary if not exists
-                if not hasattr(bill, "summary"):
-                    self.stdout.write(f"    -> Generating AI Summary for bill {bill_no}...")
+                if not has_summary:
+                    self.stdout.write(f"    -> Generating AI Summary and Categories for bill {bill_no}...")
                     summary_dict = ollama.summarize_bill(title, proposer, committee)
                     if summary_dict:
+                        # 1. Create Summary
                         BillSummary.objects.create(
                             bill=bill,
                             summary_1=summary_dict.get("summary_1", ""),
@@ -113,8 +114,28 @@ class Command(BaseCommand):
                         )
                         self.stdout.write(self.style.SUCCESS(f"    -> AI Summary generated successfully (Sentiment: {summary_dict.get('sentiment')})"))
                         summarized_count += 1
+
+                        # 2. Map Categories from LLM classification
+                        llm_categories = summary_dict.get("categories", [])
+                        valid_llm_categories = [slug for slug in llm_categories if slug in categories_map]
+                        if valid_llm_categories:
+                            BillCategory.objects.filter(bill=bill).delete()
+                            for i, slug in enumerate(valid_llm_categories):
+                                BillCategory.objects.create(
+                                    bill=bill,
+                                    category=categories_map[slug],
+                                    is_primary=(i == 0)
+                                )
+                            self.stdout.write(self.style.SUCCESS(f"    -> AI Mapped categories: {valid_llm_categories}"))
+                            llm_mapped = True
                     else:
                         self.stdout.write(self.style.ERROR(f"    -> AI Summary generation failed for bill {bill_no}"))
+
+                # 3. Fallback Mapping (if not mapped via LLM or already has summary but no categories)
+                if not llm_mapped:
+                    if not BillCategory.objects.filter(bill=bill).exists():
+                        self.stdout.write(f"    -> Mapped categories via committee fallback: {committee}")
+                        self._map_categories(bill, committee, categories_map)
 
         self.stdout.write(
             self.style.SUCCESS(

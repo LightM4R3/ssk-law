@@ -31,25 +31,44 @@ def _call_ollama(prompt: str, system: str = "") -> str | None:
 
 
 def summarize_bill(title: str, proposer: str, committee: str = "") -> dict | None:
-    """Generate a 3-line summary + impact + sentiment for a bill.
+    """Generate a 3-line summary + impact + sentiment + categories for a bill.
 
-    Returns dict with keys: summary_1, summary_2, summary_3, impact, sentiment
+    Returns dict with keys: summary_1, summary_2, summary_3, impact, sentiment, categories
     or None on failure.
     """
     system = (
-        "당신은 시민에게 한국 법안을 친근하게 설명하는 '슥법'의 AI 어시스턴트입니다. "
+        "당신은 시민에게 한국 법안을 친근하게 설명하고 분류하는 '슥법'의 AI 어시스턴트입니다. "
         "반드시 JSON으로만 응답하세요."
     )
-    prompt = f"""아래 법안을 시민이 쉽게 이해할 수 있도록 요약해주세요.
+    prompt = f"""아래 법안을 시민이 쉽게 이해할 수 있도록 요약하고 어울리는 카테고리로 분류해주세요.
 
 법안명: {title}
 발의자: {proposer}
 소관위원회: {committee or '미정'}
 
-반드시 아래 JSON 형식으로만 응답하세요 (다른 텍스트 절대 금지):
-{{"summary_1": "첫 번째 요약 문장", "summary_2": "두 번째 요약 문장", "summary_3": "세 번째 요약 문장", "impact": "예상 영향", "sentiment": 70}}
+분류 가능한 카테고리 후보(슬러그 및 설명):
+- labor (노동)
+- welfare (복지)
+- housing (주거)
+- economy (경제)
+- education (교육)
+- env (환경 · 기후)
+- digital (디지털)
+- health (보건)
+- safety (생활안전)
 
-sentiment는 시민 호감도를 0~100 사이 정수로 추정하세요."""
+반드시 아래 JSON 형식으로만 응답하세요 (다른 텍스트 절대 금지):
+{{
+  "summary_1": "첫 번째 요약 문장",
+  "summary_2": "두 번째 요약 문장",
+  "summary_3": "세 번째 요약 문장",
+  "impact": "예상 영향",
+  "sentiment": 70,
+  "categories": ["카테고리슬러그1", "카테고리슬러그2"]
+}}
+
+- sentiment는 시민 호감도를 0~100 사이 정수로 추정하세요.
+- categories는 위 후보군(labor, welfare, housing, economy, education, env, digital, health, safety) 중 가장 깊이 연관된 1~2개 슬러그를 선택하여 JSON 배열로 리턴하세요. 없는 경우 빈 배열을 리턴하세요."""
 
     text = _call_ollama(prompt, system)
     if not text:

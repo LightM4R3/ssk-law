@@ -258,22 +258,31 @@ erDiagram
 
 ```
 열린국회정보 API ──GET──► Django Management Command (sync_bills)
-                               │
-                               ▼
+                                │
+                                ▼
                          bill 테이블 저장 (UPSERT)
-                               │
-                               ▼
-                    분야 자동 분류 → bill_category 저장
-                               │
-                               ▼
-                    Ollama API 호출 → 3줄 요약 + 영향 생성
-                               │
-                               ▼
-                         bill_summary 저장
-                               │
-                               ▼
-                    유사 법안 검색 → similar_bill 저장
+                                │
+                                ▼
+                 Ollama API 호출 (요약 및 분야 분류 동시 요청)
+                                │
+                 ┌──────────────┴──────────────┐
+                 ▼                             ▼
+       [AI 분석 성공 (요약/분류)]        [AI 분석 실패 또는 카테고리 누락]
+                 │                             │
+                 ├─────────────────────────────┤
+                 ▼                             ▼
+       bill_summary 저장               소관위원회(committee) 분석
+       (3줄 요약, 영향, 감성 지표)      기반 폴백(fallback) 카테고리 도출
+                 │                             │
+                 └──────────────┬──────────────┘
+                                ▼
+                      bill_category 매핑 저장
 ```
+
+> **상세 분류 매커니즘**:
+> 1. `ollama.summarize_bill` API를 호출하여 법안 제목, 발의자, 소관위원회를 기반으로 3줄 요약, 시민 호감도(sentiment), 카테고리 분류(`categories`)를 동시에 요청합니다.
+> 2. Ollama(LLM)가 응답한 분야 목록 중 유효한 9대 대분류 슬러그를 찾아 `BillCategory` M:N 맵핑 테이블에 저장합니다.
+> 3. AI 연동 실패, 또는 카테고리 추출 오류 등으로 인해 카테고리가 맵핑되지 않은 경우, 소관위원회 문자열을 파싱하는 폴백 함수(`_map_categories`)를 동작시켜 자동으로 카테고리를 추론하고 보완합니다.
 
 ### 5.2 AI 챗봇 흐름
 
