@@ -71,15 +71,17 @@ class Command(BaseCommand):
             summary_dict = ollama.summarize_bill(title, proposer, committee, bill_content)
 
             if summary_dict:
-                # Save AI Summary (sentiment is excluded, stored as 0)
-                BillSummary.objects.create(
+                # Save AI Summary (using update_or_create to prevent UNIQUE constraint failure)
+                BillSummary.objects.update_or_create(
                     bill=bill,
-                    summary_1=summary_dict.get("summary_1", ""),
-                    summary_2=summary_dict.get("summary_2", ""),
-                    summary_3=summary_dict.get("summary_3", ""),
-                    impact=summary_dict.get("impact", ""),
-                    sentiment=0,
-                    model_name=getattr(settings, "OLLAMA_MODEL", "gemma4:e4b"),
+                    defaults={
+                        "summary_1": summary_dict.get("summary_1", ""),
+                        "summary_2": summary_dict.get("summary_2", ""),
+                        "summary_3": summary_dict.get("summary_3", ""),
+                        "impact": summary_dict.get("impact", ""),
+                        "sentiment": 0,
+                        "model_name": getattr(settings, "OLLAMA_MODEL", "gemma4:e4b"),
+                    }
                 )
 
                 # Update Category Mapping from LLM classification

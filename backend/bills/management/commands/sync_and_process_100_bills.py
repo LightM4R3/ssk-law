@@ -1,9 +1,10 @@
+import time
 import datetime
+import requests
+import logging
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django.conf import settings
-import requests
-import logging
 from bills.models import Bill, Category, BillCategory, BillSummary
 from services import ollama
 
@@ -11,40 +12,46 @@ logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = "Syncs recent bills from the National Assembly API and generates AI summaries."
+    help = "Syncs 100 bills from the Assembly APIs and processes them with Ollama LLM."
 
     def add_arguments(self, parser):
         parser.add_argument(
             "--pages",
             type=int,
-            default=1,
-            help="Number of pages to sync from National Assembly API (default: 1)",
+            default=10,
+            help="Number of pages to sync from general Assembly API (default: 10, yields 100 bills)",
+        )
+        parser.add_argument(
+            "--limit-llm",
+            type=int,
+            default=100,
+            help="Maximum number of bills to process with LLM in this run to control execution time (default: 100)",
         )
 
     def handle(self, *args, **options):
         pages = options["pages"]
-        self.stdout.write(self.style.WARNING(f"Starting bill sync for {pages} page(s)..."))
+        limit_llm = options["limit_llm"]
+        api_key = getattr(settings, "ASSEMBLY_API_KEY", "7ebbc9b78224446d89af859b2117e88e")
 
-        # 1. Ensure categories exist in database (same as seed data)
+        self.stdout.write(self.style.WARNING(f"=== STEP 1: Syncing {pages * 10} general bills from API ==="))
+        
+        # 1. Ensure categories exist
         categories_map = self._ensure_categories()
 
-        # 2. Call Assembly API
-        api_key = getattr(settings, "ASSEMBLY_API_KEY", "7ebbc9b78224446d89af859b2117e88e")
+        # 2. Call General Assembly API
         base_url = "https://open.assembly.go.kr/portal/openapi/nzmimeepazxkubdpn"
-
         synced_count = 0
-        summarized_count = 0
 
         for page in range(1, pages + 1):
             url = f"{base_url}?KEY={api_key}&Type=json&pIndex={page}&pSize=10&AGE=22"
-            self.stdout.write(f"Fetching page {page}...")
+            self.stdout.write(f"Fetching general bills page {page} / {pages}...")
 
             try:
                 resp = requests.get(url, timeout=15)
                 resp.raise_for_status()
                 data = resp.json()
             except Exception as e:
-                self.stdout.write(self.style.ERROR(f"Failed to fetch bills list from API: {e}"))
+                self.stdout.write(self.style.ERROR(f"Failed to fetch bills from API: {e}"))
                 break
 
             bill_data = data.get("nzmimeepazxkubdpn", [])
@@ -74,13 +81,13 @@ class Command(BaseCommand):
                 stage_label = raw.get("PROC_RESULT", "") or "발의"
                 stage = self._normalize_stage(stage_label)
 
-                # Prevent downgrade: only update to a new stage if it is higher/forward
+                # Prevent stage downgrade
                 try:
                     existing_bill = Bill.objects.get(bill_id=bill_no)
                     existing_stage = existing_bill.stage
                     stage_order = {"proposed": 1, "committee": 2, "plenary": 3, "passed": 4}
                     if stage_order.get(stage, 1) < stage_order.get(existing_stage, 1):
-                        stage = existing_stage  # Keep the higher stage
+                        stage = existing_stage
                 except Bill.DoesNotExist:
                     pass
 
@@ -100,24 +107,25 @@ class Command(BaseCommand):
                     }
                 )
                 
-                action = "Created" if created else "Updated"
-                self.stdout.write(f"  [{action}] Bill {bill_no}: {title[:40]}...")
+                if created:
+                    # Apply fallback categories first
+                    self._map_categories(bill, committee, categories_map)
+                
                 synced_count += 1
 
-                # 3. Fallback Mapping (임시 카테고리 매핑 설정)
-                if not BillCategory.objects.filter(bill=bill).exists():
-                    self.stdout.write(f"    -> Mapped categories via committee fallback: {committee}")
-                    self._map_categories(bill, committee, categories_map)
+        self.stdout.write(self.style.SUCCESS(f"Successfully synced {synced_count} bills."))
 
-        # 4. Sync Judiciary Committee and Plenary stages
+        # 3. Sync Judiciary stages (100 items)
+        self.stdout.write(self.style.WARNING("\n=== STEP 2: Syncing 100 Judiciary Committee (법사위) bills ==="))
         self._sync_committee_stages(api_key)
+
+        # 4. Sync Plenary stages (100 items)
+        self.stdout.write(self.style.WARNING("\n=== STEP 3: Syncing 100 Plenary (본회의) bills ==="))
         self._sync_plenary_stages(api_key)
 
-        self.stdout.write(
-            self.style.SUCCESS(
-                f"\nFinished! Synced {synced_count} bills."
-            )
-        )
+        # 5. Process AI Summaries via LLM for the newly synced/unsummarized bills
+        self.stdout.write(self.style.WARNING(f"\n=== STEP 4: Processing AI Summaries (Limit: {limit_llm}) ==="))
+        self._process_llm_summaries(api_key, categories_map, limit_llm)
 
     def _ensure_categories(self):
         categories_seed = [
@@ -150,9 +158,7 @@ class Command(BaseCommand):
         return "proposed"
 
     def _map_categories(self, bill, committee, categories_map):
-        # Delete old mappings first
         BillCategory.objects.filter(bill=bill).delete()
-
         mapped_slugs = []
         if "환경" in committee or "노동" in committee:
             mapped_slugs.append("labor")
@@ -171,11 +177,9 @@ class Command(BaseCommand):
         if "행정" in committee or "안전" in committee or "국방" in committee or "외교" in committee or "통일" in committee:
             mapped_slugs.append("safety")
 
-        # Fallback to safety if nothing matches
         if not mapped_slugs:
             mapped_slugs.append("safety")
 
-        # Create relationships
         for i, slug in enumerate(mapped_slugs):
             if slug in categories_map:
                 BillCategory.objects.create(
@@ -185,15 +189,12 @@ class Command(BaseCommand):
                 )
 
     def _sync_committee_stages(self, api_key):
-        """법사위 처리 API를 호출하여 대상 법안의 단계를 plenary(본회의 상정)로 업데이트 및 신규 생성합니다."""
         url = "https://open.assembly.go.kr/portal/openapi/TVBPMBILL11"
-        self.stdout.write(self.style.WARNING("Starting Judiciary Committee (법사위) stage synchronization..."))
-        
         params = {
             "KEY": api_key,
             "Type": "json",
             "pIndex": 1,
-            "pSize": 50,
+            "pSize": 100,  # 100 items
             "AGE": 22
         }
         
@@ -202,12 +203,12 @@ class Command(BaseCommand):
             resp.raise_for_status()
             data = resp.json()
         except Exception as e:
-            self.stdout.write(self.style.ERROR(f"Failed to fetch committee bills from API: {e}"))
+            self.stdout.write(self.style.ERROR(f"Failed to fetch committee bills: {e}"))
             return
 
         bill_data = data.get("TVBPMBILL11", [])
         if len(bill_data) <= 1 or "row" not in bill_data[1]:
-            self.stdout.write("No committee rows found in response.")
+            self.stdout.write("No committee rows found.")
             return
 
         raw_bills = bill_data[1]["row"]
@@ -223,10 +224,8 @@ class Command(BaseCommand):
             law_proc_result = raw.get("LAW_PROC_RESULT_CD", "") or ""
             law_proc_dt = raw.get("LAW_PROC_DT", "")
             
-            # 법사위에서 처리가 완료되었거나 일정이 있는 경우 plenary(본회의 상정)로 세팅
             if law_proc_dt or law_proc_result:
                 try:
-                    # 1. 기존 법안이 있으면 단계만 안전하게 전진 업데이트
                     bill = Bill.objects.get(bill_no=bill_no)
                     existing_stage = bill.stage
                     stage_order = {"proposed": 1, "committee": 2, "plenary": 3, "passed": 4}
@@ -236,7 +235,6 @@ class Command(BaseCommand):
                         self.stdout.write(f"  [Judiciary Stage Update] Bill {bill_no} stage advanced to plenary.")
                         updated_count += 1
                 except Bill.DoesNotExist:
-                    # 2. 기존 법안이 없는 경우, 신규 생성
                     bill_id = raw.get("BILL_ID") or bill_no
                     title = raw.get("BILL_NAME", "제목 없음")
                     proposer = raw.get("PROPOSER", "발의자 정보 없음")
@@ -268,15 +266,12 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"Finished Judiciary Committee sync. Updated {updated_count}, Created {created_count} bills."))
 
     def _sync_plenary_stages(self, api_key):
-        """본회의 처리 API를 호출하여 대상 법안의 단계를 passed(통과 · 공포)로 업데이트 및 신규 생성합니다."""
         url = "https://open.assembly.go.kr/portal/openapi/nwbpacrgavhjryiph"
-        self.stdout.write(self.style.WARNING("Starting Plenary (본회의) stage synchronization..."))
-        
         params = {
             "KEY": api_key,
             "Type": "json",
             "pIndex": 1,
-            "pSize": 50,
+            "pSize": 100,  # 100 items
             "AGE": 22
         }
         
@@ -285,12 +280,12 @@ class Command(BaseCommand):
             resp.raise_for_status()
             data = resp.json()
         except Exception as e:
-            self.stdout.write(self.style.ERROR(f"Failed to fetch plenary bills from API: {e}"))
+            self.stdout.write(self.style.ERROR(f"Failed to fetch plenary bills: {e}"))
             return
 
         bill_data = data.get("nwbpacrgavhjryiph", [])
         if len(bill_data) <= 1 or "row" not in bill_data[1]:
-            self.stdout.write("No plenary rows found in response.")
+            self.stdout.write("No plenary rows found.")
             return
 
         raw_bills = bill_data[1]["row"]
@@ -305,10 +300,8 @@ class Command(BaseCommand):
                 
             proc_result = raw.get("PROC_RESULT_CD", "") or ""
             
-            # 본회의 의결결과가 존재하고 가결 취지인 경우 passed로 업데이트 및 신규 생성
             if "가결" in proc_result or proc_result in ["수정가결", "원안가결"]:
                 try:
-                    # 1. 기존 법안이 있으면 단계만 안전하게 전진 업데이트
                     bill = Bill.objects.get(bill_no=bill_no)
                     existing_stage = bill.stage
                     stage_order = {"proposed": 1, "committee": 2, "plenary": 3, "passed": 4}
@@ -318,10 +311,8 @@ class Command(BaseCommand):
                         self.stdout.write(f"  [Plenary Stage Update] Bill {bill_no} stage advanced to passed.")
                         updated_count += 1
                 except Bill.DoesNotExist:
-                    # 2. 기존 법안이 없는 경우, 신규 생성
                     bill_id = raw.get("BILL_ID") or bill_no
                     raw_title = raw.get("BILL_NM", "제목 없음")
-                    # Clean title: remove trailing proposer info in brackets like "안(의원명 등 10인)"
                     title = raw_title.split("(")[0].strip() if "(" in raw_title else raw_title
                     
                     proposer = raw.get("PROPOSER", "발의자 정보 없음")
@@ -351,3 +342,85 @@ class Command(BaseCommand):
                     created_count += 1
                     
         self.stdout.write(self.style.SUCCESS(f"Finished Plenary sync. Updated {updated_count}, Created {created_count} bills."))
+
+    def _process_llm_summaries(self, api_key, categories_map, limit):
+        # Find bills without summaries
+        unsummarized = Bill.objects.filter(summary__isnull=True).order_by("-proposed_at")
+        total = unsummarized.count()
+
+        if total == 0:
+            self.stdout.write(self.style.SUCCESS("All bills already have summaries!"))
+            return
+
+        process_count = min(total, limit)
+        self.stdout.write(self.style.WARNING(f"Found {total} unsummarized bill(s). Processing first {process_count} with Ollama..."))
+
+        success_count = 0
+        endpoint = "BPMBILLSUMMARY"
+
+        for index, bill in enumerate(unsummarized[:process_count], 1):
+            bill_id = bill.bill_id
+            title = bill.title
+            proposer = bill.proposer
+            committee = bill.committee
+
+            self.stdout.write(f"\n[{index}/{process_count}] Processing Bill {bill_id}: {title[:40]}...")
+            start_time = time.time()
+
+            # 1. Fetch text from BPMBILLSUMMARY API
+            bill_content = ""
+            detail_url = f"https://open.assembly.go.kr/portal/openapi/{endpoint}?KEY={api_key}&Type=json&pIndex=1&pSize=1&BILL_NO={bill_id}"
+            
+            try:
+                resp = requests.get(detail_url, timeout=10)
+                resp.raise_for_status()
+                detail_data = resp.json()
+
+                if endpoint in detail_data and len(detail_data[endpoint]) > 1 and "row" in detail_data[endpoint][1]:
+                    raw_summary = detail_data[endpoint][1]["row"][0].get("SUMMARY")
+                    bill_content = raw_summary.strip() if raw_summary else ""
+                    self.stdout.write(self.style.SUCCESS(f"  -> Retrieved detailed content ({len(bill_content)} chars)"))
+                else:
+                    self.stdout.write("  -> No detailed content in Assembly response (using title only)")
+            except Exception as e:
+                self.stdout.write(self.style.ERROR(f"  -> Failed to fetch detail content: {e}"))
+
+            # 2. Call Ollama model
+            self.stdout.write("  -> Generating AI Summary with Ollama...")
+            summary_dict = ollama.summarize_bill(title, proposer, committee, bill_content)
+
+            if summary_dict:
+                # Save Summary (using update_or_create to prevent UNIQUE constraint failure)
+                BillSummary.objects.update_or_create(
+                    bill=bill,
+                    defaults={
+                        "summary_1": summary_dict.get("summary_1", ""),
+                        "summary_2": summary_dict.get("summary_2", ""),
+                        "summary_3": summary_dict.get("summary_3", ""),
+                        "impact": summary_dict.get("impact", ""),
+                        "sentiment": 0,
+                        "model_name": getattr(settings, "OLLAMA_MODEL", "gemma4:e4b"),
+                    }
+                )
+
+                # Map LLM categories
+                llm_categories = summary_dict.get("categories", [])
+                valid_llm_categories = [slug for slug in llm_categories if slug in categories_map]
+                
+                if valid_llm_categories:
+                    BillCategory.objects.filter(bill=bill).delete()
+                    for i, slug in enumerate(valid_llm_categories):
+                        BillCategory.objects.create(
+                            bill=bill,
+                            category=categories_map[slug],
+                            is_primary=(i == 0)
+                        )
+                    self.stdout.write(self.style.SUCCESS(f"  -> Mapped LLM categories: {valid_llm_categories}"))
+
+                elapsed = time.time() - start_time
+                self.stdout.write(self.style.SUCCESS(f"  -> Finished in {elapsed:.2f} seconds"))
+                success_count += 1
+            else:
+                self.stdout.write(self.style.ERROR("  -> AI Summary generation failed"))
+
+        self.stdout.write(self.style.SUCCESS(f"\nOllama Processing Finished: processed {success_count} / {process_count} bills."))
