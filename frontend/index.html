@@ -183,6 +183,9 @@
   These are intentionally plain globals (no ES modules) so they can be served as
   static files without a build step. Wire to a bundler later if you wish.
 -->
+<script>
+  window.SSK_API_BASE = "http://localhost:8000";
+</script>
 <script src="scripts/data.js"></script>
 <script src="scripts/api.js"></script>
 <script src="scripts/state.js"></script>

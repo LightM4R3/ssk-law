@@ -31,34 +31,37 @@ function keywordFallback(query, list) {
 }
 
 async function nlSearch(query) {
-  const list = allBillsForSearch();
-  const compact = list.map(b => `- ${b.id} | ${b.title} | ${b.cats} | ${b.sum.slice(0,60)}`).join("\n");
-  const prompt = `당신은 시민에게 한국 법안을 친근하게 큐레이션하는 '슥법'의 AI 어시스턴트입니다.
-
-사용자 질문: "${query}"
-
-아래 법안 목록에서 질문과 가장 관련있는 3-5개를 골라 id를 나열하고, 친근한 반말로 2-3문장 요약해주세요.
-${compact}
-
-반드시 이 JSON 형식으로만 응답하세요 (다른 텍스트 절대 금지):
-{"intro":"친근한 2-3문장 한국어 답변","ids":["id1","id2","id3"]}`;
-
   try {
-    const res = await window.claude.complete(prompt);
-    const m = res.match(/\{[\s\S]*\}/);
-    if (m) {
-      const obj = JSON.parse(m[0]);
-      const validIds = (obj.ids || []).filter(id => ALL_BY_ID[id]);
-      if (validIds.length && obj.intro) return { intro: obj.intro, ids: validIds.slice(0,5) };
-    }
-  } catch (e) { console.warn("AI search fallback:", e); }
+    const res = await fetch(apiUrl("/api/search"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      body: JSON.stringify({ query })
+    });
+    if (!res.ok) throw new Error(`Search API error: ${res.status}`);
+    const data = await res.json();
+    
+    // Normalize and inject search result bills into global registry
+    const bills = asArray(data.bills).map(normalizeBill);
+    bills.forEach(b => {
+      ALL_BY_ID[b.id] = b;
+    });
 
-  const matched = keywordFallback(query, list);
-  return {
-    intro: `"${query}"와(과) 관련된 법안 ${matched.length}건을 슥 찾아봤어요. 카드를 눌러 더 자세히 확인해보세요.`,
-    ids: matched.map(b => b.id)
-  };
+    return {
+      intro: data.intro || `"${query}"와(과) 관련된 검색 결과입니다.`,
+      ids: data.ids || bills.map(b => b.id)
+    };
+  } catch (error) {
+    console.error("AI Search failed:", error);
+    return {
+      intro: "죄송해요, AI 검색 서버와 통신하는 중 에러가 발생했어요. 잠시 후 다시 시도해 주세요.",
+      ids: []
+    };
+  }
 }
+
 
 async function renderSearch(query) {
   $("#queryEcho").textContent = query || "—";
