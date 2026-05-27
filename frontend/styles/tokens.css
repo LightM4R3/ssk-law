@@ -24,7 +24,7 @@
     --r-lg: 22px;
     --r-xl: 28px;
     --r-pill: 999px;
-  }
+}
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: var(--bg); color: var(--ink); }
 body {

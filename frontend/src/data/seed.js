@@ -1,5 +1,5 @@
 // All static data: categories, stages, bills, picks, weekly ranking, example queries
-const CATEGORIES = [
+export const CATEGORIES = [
   { id: "all", label: "전체", count: 142 },
   { id: "labor", label: "노동", count: 18 },
   { id: "welfare", label: "복지", count: 24 },
@@ -15,7 +15,7 @@ const CATEGORIES = [
 /* Per-category aesthetic + editorial meta.
    Each gets a unique hue (oklch) but shares chroma/lightness — same family as the
    global --accent (oklch 0.42 0.08 245), only the hue rotates. */
-const CATEGORY_META = {
+export const CATEGORY_META = {
   labor:     { glyph: "勞", sub: "Labor",        hue: 22,  blurb: "일하는 사람의 권리·안전망",    new: 4, hot: true  },
   welfare:   { glyph: "福", sub: "Welfare",      hue: 145, blurb: "돌봄·소득·복지 안전망",        new: 6, hot: true  },
   housing:   { glyph: "宅", sub: "Housing",      hue: 285, blurb: "월세·전세·청년 주거 안정",     new: 3, hot: false },
@@ -27,7 +27,7 @@ const CATEGORY_META = {
   safety:    { glyph: "安", sub: "Safety",       hue: 35,  blurb: "교통·재난·생활안전",            new: 2, hot: false },
 };
 
-const STAGES = {
+export const STAGES = {
   proposed:  { label: "발의",        cls: "s1", idx: 0 },
   committee: { label: "위원회 심사",  cls: "s2", idx: 1 },
   plenary:   { label: "본회의 상정",  cls: "s3", idx: 2 },
@@ -35,7 +35,7 @@ const STAGES = {
 };
 
 /* TODAY's PICKS — 5 (home carousel) */
-const PICKS = [
+export const PICKS = [
   {
     id: "p1",
     title: "플랫폼 노동자에게도 유급 휴가와 산재보험을.",
@@ -121,7 +121,7 @@ const PICKS = [
 ];
 
 /* LATEST GRID — 12 cards */
-const BILLS = [
+export const BILLS = [
   { id: "b0", span: "span-6", featured: true, ...PICKS[0] },
   { id: "b1", span: "span-3", ...PICKS[1] },
   { id: "b2", span: "span-3", ...PICKS[2] },
@@ -179,7 +179,7 @@ const BILLS = [
   },
 ];
 
-const WEEKLY = [
+export const WEEKLY = [
   { rank: 1, ref: "p1", title: "플랫폼 노동자 유급휴가·산재보험 보장법", cats: [{label:"노동", k:"labor", accent:true},{label:"복지", k:"welfare"}], snip: "4대 보험 의무화와 연 5일 유급 휴가를 단계 도입.", view: 128400, trend: "+42%" },
   { rank: 2, ref: "p2", title: "청년 월세 지원 확대 및 상한 인상법", cats: [{label:"주거", k:"housing", accent:true}], snip: "월 20만 원 → 30만 원, 지원 기간 24개월로 확대.", view: 96200, trend: "+18%" },
   { rank: 3, ref: "p3", title: "중·고등학교 무상급식 전면 확대법", cats: [{label:"교육", k:"education", accent:true}], snip: "전국 중·고생 270만 명 무상급식, 지역 농산물 30% 의무.", view: 71800, trend: "+11%" },
