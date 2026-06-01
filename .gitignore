@@ -16,12 +16,17 @@ Thumbs.db
 dist/
 build/
 .cache/
+__pycache__/
+*.py[cod]
 
 # Test and generated artifacts
 coverage/
 playwright-report/
 test-results/
 output/
+
+# Local Django database
+*.sqlite3
 
 # Original imported folder kept outside the tracked repo structure
 App onboarding (1)/
