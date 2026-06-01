@@ -1,10 +1,34 @@
 <script setup>
-import { RouterLink, RouterView } from "vue-router";
+import { RouterLink, RouterView, useRouter } from "vue-router";
 import BillModal from "./components/BillModal.vue";
 import SimilarBillModal from "./components/SimilarBillModal.vue";
 import { useAppStore } from "./stores/app";
 
 const store = useAppStore();
+const router = useRouter();
+
+function closeOpenOverlays() {
+  if (store.activeBill) store.closeBill();
+  if (store.activeSimilarData) store.closeSimilar();
+}
+
+function selectTickerItem(item) {
+  if (item.type === "bill" && item.billId) {
+    store.openBill(item.billId);
+    return;
+  }
+
+  closeOpenOverlays();
+
+  if (item.type === "category" && item.categoryId) {
+    router.push({ name: "category-detail", params: { id: item.categoryId } });
+    return;
+  }
+
+  if (item.type === "route" && item.route) {
+    router.push(item.route);
+  }
+}
 </script>
 
 <template>
@@ -34,7 +58,18 @@ const store = useAppStore();
       <div class="ticker-label"><span class="ticker-pulse"></span>지금 슥</div>
       <div class="ticker-viewport">
         <div class="ticker-track">
-          <span v-for="item in store.tickerItems" :key="item" class="ticker-item">{{ item }}</span>
+          <button
+            v-for="item in store.tickerItems"
+            :key="item.id"
+            class="ticker-item"
+            type="button"
+            @click="selectTickerItem(item)"
+          >
+            <span class="ti-tag">{{ item.label }}</span>
+            <b>{{ item.title }}</b>
+            <span class="ti-sep"></span>
+            <span class="ti-meta">{{ item.meta }}</span>
+          </button>
         </div>
       </div>
     </div>

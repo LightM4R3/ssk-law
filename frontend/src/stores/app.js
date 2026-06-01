@@ -16,13 +16,6 @@ const navItems = [
   { name: "categories", label: "분야별" },
 ];
 
-const tickerItems = [
-  "플랫폼 노동자 보호 법안 상임위 심사",
-  "청년 월세 지원 확대안 신규 발의",
-  "디지털 권리 분야 법안 14건",
-  "이번 주 인기 분야: 복지",
-];
-
 function normalizeCategory(category) {
   const meta = CATEGORY_META[category.id] || {};
   return {
@@ -47,10 +40,41 @@ function stageKeyFromLabel(label) {
   return "committee";
 }
 
+function dateValue(date) {
+  return Number(date?.replaceAll(".", "") || 0);
+}
+
+function trendValue(trend) {
+  return Number.parseFloat(String(trend || "0").replace("%", "")) || 0;
+}
+
+function findBillByRef(state, ref) {
+  return state.bills.find((bill) => bill.id === ref)
+    || state.picks.find((bill) => bill.id === ref)
+    || null;
+}
+
+function getWeeklyCategoryStats(state) {
+  const viewsByCategory = new Map();
+
+  state.weekly.forEach((item) => {
+    item.cats.forEach((cat) => {
+      viewsByCategory.set(cat.k, (viewsByCategory.get(cat.k) || 0) + item.view);
+    });
+  });
+
+  return Array.from(viewsByCategory.entries())
+    .map(([id, views]) => ({
+      ...state.categories.find((category) => category.id === id),
+      views,
+    }))
+    .filter((category) => category.id)
+    .sort((a, b) => b.views - a.views);
+}
+
 export const useAppStore = defineStore("app", {
   state: () => ({
     navItems,
-    tickerItems,
     categories: CATEGORIES.filter((category) => category.id !== "all").map(normalizeCategory),
     totalTrackedCount: CATEGORIES.find((category) => category.id === "all")?.count || 0,
     bills: BILLS.map(normalizeBill),
@@ -87,6 +111,82 @@ export const useAppStore = defineStore("app", {
         bill,
       };
     }),
+    tickerItems: (state) => {
+      const latestBill = [...state.bills].sort((a, b) => dateValue(b.proposedAt) - dateValue(a.proposedAt))[0];
+      const weeklyItems = state.weekly.map((item) => ({
+        ...item,
+        bill: findBillByRef(state, item.ref),
+      }));
+      const topWeekly = weeklyItems[0];
+      const risingWeekly = weeklyItems
+        .filter((item) => item.ref !== topWeekly?.ref && trendValue(item.trend) > 0)
+        .sort((a, b) => trendValue(b.trend) - trendValue(a.trend))[0];
+      const categoryStats = getWeeklyCategoryStats(state);
+      const topCategory = categoryStats[0];
+      const newestCategory = [...state.categories]
+        .filter((category) => category.id !== topCategory?.id)
+        .sort((a, b) => (b.new || 0) - (a.new || 0))[0];
+      const digitalCategory = state.categories.find((category) => category.id === "digital");
+
+      return [
+        latestBill && {
+          id: "latest-bill",
+          type: "bill",
+          label: "최신 발의안",
+          title: latestBill.title,
+          meta: `${latestBill.proposedAt} · ${STAGES[latestBill.stage]?.label || "발의"}`,
+          billId: latestBill.id,
+        },
+        topWeekly?.bill && {
+          id: "popular-bill",
+          type: "bill",
+          label: "인기 발의안",
+          title: topWeekly.title,
+          meta: `${topWeekly.view.toLocaleString()}회 읽음`,
+          billId: topWeekly.bill.id,
+        },
+        risingWeekly?.bill && {
+          id: "rising-bill",
+          type: "bill",
+          label: "급상승",
+          title: risingWeekly.title,
+          meta: risingWeekly.trend,
+          billId: risingWeekly.bill.id,
+        },
+        topCategory && {
+          id: "popular-category",
+          type: "category",
+          label: "인기 분야",
+          title: topCategory.label,
+          meta: `${topCategory.views.toLocaleString()}회 관심`,
+          categoryId: topCategory.id,
+        },
+        newestCategory && {
+          id: "newest-category",
+          type: "category",
+          label: "신규 많은 분야",
+          title: newestCategory.label,
+          meta: `이번 주 신규 ${newestCategory.new}건`,
+          categoryId: newestCategory.id,
+        },
+        digitalCategory && {
+          id: "digital-watch",
+          type: "category",
+          label: "분야 추적",
+          title: "디지털 권리",
+          meta: `법안 ${digitalCategory.count}건`,
+          categoryId: digitalCategory.id,
+        },
+        {
+          id: "weekly-ranking",
+          type: "route",
+          label: "TOP10",
+          title: "이번 주 인기 법안 전체 보기",
+          meta: "랭킹",
+          route: { name: "weekly" },
+        },
+      ].filter(Boolean);
+    },
     stageLabel: () => (stage) => STAGES[stage]?.label || stage,
     stageClass: () => (stage) => STAGES[stage]?.cls || "s1",
     stageMeta: () => (stage) => STAGES[stage] || STAGES.proposed,

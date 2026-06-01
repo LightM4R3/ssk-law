@@ -21,11 +21,6 @@ const summary = computed(() => props.bill.summaryText || props.bill.summary);
 
 <template>
   <article class="card" :class="[bill.span || 'span-2', { compact: bill.compact }]" tabindex="0" @click="emit('select', bill)" @keydown.enter="emit('select', bill)">
-    <button class="bookmark" type="button" aria-label="저장" @click.stop>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-        <path d="M19 21 12 17 5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
-      </svg>
-    </button>
     <div class="card-shine"></div>
 
     <div class="card-meta">

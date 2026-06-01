@@ -93,13 +93,3 @@
   .card:hover .suk-hint { opacity: 1; transform: translateY(-50%) translateX(0); }
   .card.compact h3 { font-size: 16px; }
   .card.compact .summary { -webkit-line-clamp: 2; font-size: 13.5px; }
-  .card .bookmark {
-    position: absolute; top: 18px; right: 18px;
-    width: 32px; height: 32px; border-radius: 50%;
-    display: grid; place-items: center; color: var(--ink-3);
-    opacity: 0; transition: opacity .15s, background .15s;
-    z-index: 3;
-  }
-  .card:hover .bookmark { opacity: 1; }
-  .card .bookmark:hover { background: rgba(255,255,255,.7); color: var(--ink); }
-  .card .bookmark.saved { opacity: 1; color: var(--accent-ink); }
