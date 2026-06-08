@@ -13,7 +13,25 @@ const emit = defineEmits(["close", "openSimilar"]);
 const store = useAppStore();
 const stageOrder = ["proposed", "committee", "plenary", "passed"];
 const stage = computed(() => store.stageMeta(props.bill.stage));
-const summary = computed(() => Array.isArray(props.bill.summary) ? props.bill.summary : [props.bill.summaryText || props.bill.summary]);
+const summary = computed(() => {
+  if (Array.isArray(props.bill.summary)) {
+    const lines = props.bill.summary.filter(Boolean);
+    return lines.length ? lines : ["요약 준비 중입니다."];
+  }
+  const summaryText = props.bill.summaryText || props.bill.summary || props.bill.impact;
+  return summaryText ? [String(summaryText)] : ["요약 준비 중입니다."];
+});
+const billNumber = computed(() => props.bill.billNo ? `의안 ${props.bill.billNo}` : props.bill.id);
+const syncedDate = computed(() => {
+  if (!props.bill.syncedAt) return "";
+  return String(props.bill.syncedAt).slice(0, 10).replaceAll("-", ".");
+});
+
+function openDetailLink() {
+  if (props.bill.detailLink) {
+    window.open(props.bill.detailLink, "_blank", "noopener,noreferrer");
+  }
+}
 
 function closeOnEscape(event) {
   if (event.key === "Escape") {
@@ -44,7 +62,7 @@ onUnmounted(() => document.removeEventListener("keydown", closeOnEscape));
           <div class="modal-meta">
             <span><b>발의일</b> {{ bill.proposedAt }}</span>
             <span><b>대표 발의</b> {{ bill.proposer }}</span>
-            <span><b>법안번호</b> 의안 2126-{{ bill.id.toUpperCase() }}</span>
+            <span><b>법안번호</b> {{ billNumber }}</span>
           </div>
         </div>
         <button class="close" type="button" aria-label="닫기" @click="emit('close')">
@@ -59,7 +77,7 @@ onUnmounted(() => document.removeEventListener("keydown", closeOnEscape));
         <div class="modal-stage">
           <div class="modal-stage-head">
             <div>현재 단계 · <span>{{ stage.label }}</span></div>
-            <div>최근 업데이트 2026.05.13</div>
+            <div v-if="syncedDate">최근 업데이트 {{ syncedDate }}</div>
           </div>
           <div class="stage-track">
             <div
@@ -115,7 +133,7 @@ onUnmounted(() => document.removeEventListener("keydown", closeOnEscape));
 
         <div class="modal-actions">
           <button class="btn btn-ghost" type="button">공유</button>
-          <button class="btn btn-ghost" type="button">원문 보기</button>
+          <button v-if="bill.detailLink" class="btn btn-ghost" type="button" @click="openDetailLink">원문 보기</button>
         </div>
       </div>
     </div>

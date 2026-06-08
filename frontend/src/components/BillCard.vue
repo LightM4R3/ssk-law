@@ -16,7 +16,16 @@ const stageClass = computed(() => {
   return props.bill.stageClass || `s${index + 1 || 1}`;
 });
 
-const summary = computed(() => props.bill.summaryText || props.bill.summary);
+const summary = computed(() => {
+  if (props.bill.summaryText) return props.bill.summaryText;
+  if (Array.isArray(props.bill.summary)) {
+    const summaryText = props.bill.summary.filter(Boolean).join(" ");
+    if (summaryText) return summaryText;
+  }
+  if (props.bill.summary && !Array.isArray(props.bill.summary)) return String(props.bill.summary);
+  if (props.bill.impact) return props.bill.impact;
+  return "요약 준비 중입니다.";
+});
 </script>
 
 <template>

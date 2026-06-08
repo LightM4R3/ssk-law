@@ -5,6 +5,9 @@ node_modules/
 .env
 .env.*
 !.env.example
+venv/
+.venv/
+backend/venv/
 
 # OS / editor
 .DS_Store
@@ -23,6 +26,7 @@ __pycache__/
 coverage/
 playwright-report/
 test-results/
+.playwright-cli/
 output/
 
 # Local Django database

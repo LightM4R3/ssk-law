@@ -1,4 +1,5 @@
 <script setup>
+import { onMounted } from "vue";
 import { RouterLink, RouterView, useRouter } from "vue-router";
 import BillModal from "./components/BillModal.vue";
 import SimilarBillModal from "./components/SimilarBillModal.vue";
@@ -29,6 +30,10 @@ function selectTickerItem(item) {
     router.push(item.route);
   }
 }
+
+onMounted(() => {
+  store.loadInitialData();
+});
 </script>
 
 <template>

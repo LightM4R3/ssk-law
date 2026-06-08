@@ -1,10 +1,12 @@
 <script setup>
 import { computed } from "vue";
 
+import ApiStateCard from "../components/ApiStateCard.vue";
 import { useAppStore } from "../stores/app";
 
 const store = useAppStore();
 const items = computed(() => store.weeklyItems);
+const isLoadingWeekly = computed(() => store.apiStatus === "loading" && !items.value.length);
 
 function openWeeklyItem(item) {
   if (item.bill) {
@@ -22,7 +24,20 @@ function openWeeklyItem(item) {
       </div>
     </div>
 
-    <div class="weekly-list">
+    <div v-if="store.resourceErrors.weekly" class="grid">
+      <ApiStateCard :state="store.resourceErrors.weekly" @retry="store.loadInitialData" />
+    </div>
+    <div v-else-if="isLoadingWeekly" class="grid">
+      <ApiStateCard :state="store.loadingState" :show-action="false" />
+    </div>
+    <div v-else-if="!items.length" class="grid">
+      <ApiStateCard
+        :state="store.emptyState('인기 법안이 아직 없어요', '백엔드 응답은 성공했지만 인기 법안 목록이 비어 있습니다.')"
+        @retry="store.loadInitialData"
+      />
+    </div>
+
+    <div v-else class="weekly-list">
       <article
         v-for="item in items"
         :key="item.ref"
@@ -47,8 +62,8 @@ function openWeeklyItem(item) {
           <div class="weekly-snip">{{ item.snip }}</div>
         </div>
         <div class="weekly-stats">
-          <span class="weekly-views">{{ item.view.toLocaleString() }}</span>
-          <span class="weekly-trend" :class="{ down: item.down }">{{ item.trend }}</span>
+          <span class="weekly-views">{{ Number(item.view || 0).toLocaleString() }}</span>
+          <span v-if="item.trend" class="weekly-trend" :class="{ down: item.down }">{{ item.trend }}</span>
         </div>
         <div class="weekly-go">슥 보기</div>
       </article>

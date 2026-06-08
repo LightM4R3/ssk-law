@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from "vue";
 
+import ApiStateCard from "../components/ApiStateCard.vue";
 import BillCard from "../components/BillCard.vue";
 import { useAppStore } from "../stores/app";
 
@@ -19,6 +20,7 @@ const bills = computed(() => store.bills
     stageLabel: store.stageLabel(bill.stage),
     stageClass: store.stageClass(bill.stage),
   })));
+const isLoadingBills = computed(() => store.apiStatus === "loading" && !store.bills.length);
 </script>
 
 <template>
@@ -44,7 +46,24 @@ const bills = computed(() => store.bills
     </div>
 
     <div class="grid">
-      <BillCard v-for="bill in bills" :key="bill.id" :bill="bill" @select="store.openBill($event.id)" />
+      <ApiStateCard
+        v-if="store.resourceErrors.bills"
+        :state="store.resourceErrors.bills"
+        @retry="store.loadInitialData"
+      />
+      <ApiStateCard
+        v-else-if="isLoadingBills"
+        :state="store.loadingState"
+        :show-action="false"
+      />
+      <ApiStateCard
+        v-else-if="!bills.length"
+        :state="store.emptyState('조건에 맞는 법안이 아직 없어요', '백엔드 응답은 성공했지만 이 분야에 표시할 법안이 없습니다.')"
+        @retry="store.loadInitialData"
+      />
+      <template v-else>
+        <BillCard v-for="bill in bills" :key="bill.id" :bill="bill" @select="store.openBill($event.id)" />
+      </template>
     </div>
   </section>
 </template>

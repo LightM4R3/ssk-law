@@ -1,5 +1,6 @@
 <script setup>
 import { computed } from "vue";
+import ApiStateCard from "../components/ApiStateCard.vue";
 import { useAppStore } from "../stores/app";
 
 const store = useAppStore();
@@ -27,34 +28,13 @@ function topTitlesForCategory(categoryId, limit = 3) {
   return titles.slice(0, limit);
 }
 
-function stageCountsForCategory(category) {
-  const counts = { proposed: 0, committee: 0, plenary: 0, passed: 0 };
-  const bills = itemsInCategory(store.bills, category.id);
-
-  bills.forEach((bill) => {
-    if (counts[bill.stage] !== undefined) counts[bill.stage] += 1;
-  });
-
-  const remaining = Math.max(0, (category.count || 0) - bills.length);
-  if (remaining) {
-    const proposed = Math.round(remaining * 0.45);
-    const committee = Math.round(remaining * 0.32);
-    const plenary = Math.round(remaining * 0.16);
-    counts.proposed += proposed;
-    counts.committee += committee;
-    counts.plenary += plenary;
-    counts.passed += Math.max(0, remaining - proposed - committee - plenary);
-  }
-
-  return counts;
-}
-
 const categoryCards = computed(() => store.categories.map((category, index) => ({
   ...category,
   delay: `${index * 60}ms`,
-  stageCounts: stageCountsForCategory(category),
+  loadedCount: itemsInCategory(store.bills, category.id).length,
   previewTitles: topTitlesForCategory(category.id),
 })));
+const isLoadingCategories = computed(() => store.apiStatus === "loading" && !store.categories.length);
 </script>
 
 <template>
@@ -70,7 +50,20 @@ const categoryCards = computed(() => store.categories.map((category, index) => (
       </div>
     </div>
 
-    <div class="cat-grid">
+    <div v-if="store.resourceErrors.categories" class="grid">
+      <ApiStateCard :state="store.resourceErrors.categories" @retry="store.loadInitialData" />
+    </div>
+    <div v-else-if="isLoadingCategories" class="grid">
+      <ApiStateCard :state="store.loadingState" :show-action="false" />
+    </div>
+    <div v-else-if="!categoryCards.length" class="grid">
+      <ApiStateCard
+        :state="store.emptyState('분야 정보가 아직 없어요', '백엔드 응답은 성공했지만 분야 목록이 비어 있습니다.')"
+        @retry="store.loadInitialData"
+      />
+    </div>
+
+    <div v-else class="cat-grid">
       <RouterLink
         v-for="cat in categoryCards"
         :key="cat.id"
@@ -80,8 +73,7 @@ const categoryCards = computed(() => store.categories.map((category, index) => (
       >
         <div class="cat-card-top">
           <div class="cat-glyph">{{ cat.glyph }}</div>
-          <span v-if="cat.hot" class="cat-badge"><span class="pulse"></span>이번 주 화제</span>
-          <span v-else class="cat-badge muted">신규 {{ cat.new }}건</span>
+          <span class="cat-badge muted">집계 {{ cat.count }}건</span>
         </div>
 
         <h3 class="cat-name">
@@ -92,12 +84,12 @@ const categoryCards = computed(() => store.categories.map((category, index) => (
 
         <div class="cat-stats">
           <div class="cat-stat">
-            <span class="cat-stat-num">{{ cat.count }}<span class="delta">+{{ cat.new }}</span></span>
-            <span class="cat-stat-label">전체 / 이번주 신규</span>
+            <span class="cat-stat-num">{{ cat.count }}</span>
+            <span class="cat-stat-label">전체 추적 법안</span>
           </div>
           <div class="cat-stat">
-            <span class="cat-stat-num">{{ cat.stageCounts.committee }}</span>
-            <span class="cat-stat-label">위원회 심사 중</span>
+            <span class="cat-stat-num">{{ cat.loadedCount }}</span>
+            <span class="cat-stat-label">목록 표시 중</span>
           </div>
         </div>
 

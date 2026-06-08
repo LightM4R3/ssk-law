@@ -8,6 +8,10 @@ const props = defineProps({
     type: Array,
     required: true,
   },
+  eyebrow: {
+    type: String,
+    default: "추천 법안",
+  },
 });
 
 const emit = defineEmits(["select", "selectSimilar"]);
@@ -105,7 +109,7 @@ onUnmounted(() => {
             <div class="pick-num">{{ String(pickIndex + 1).padStart(2, "0") }} <span>/ {{ String(picks.length).padStart(2, "0") }}</span></div>
             <div class="pick-body">
               <div class="pick-main">
-                <span class="pick-eyebrow">오늘 슥 보기 좋은 법안 · 5월 14일</span>
+                <span class="pick-eyebrow">{{ eyebrow }}</span>
                 <div class="pick-cats">
                   <span v-for="cat in pick.cats" :key="cat.k" class="tag" :class="{ accent: cat.accent }">{{ cat.label }}</span>
                 </div>
