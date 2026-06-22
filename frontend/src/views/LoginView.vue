@@ -1,14 +1,16 @@
 <script setup>
-import { reactive, ref } from "vue";
-import { RouterLink, useRouter } from "vue-router";
+import { computed, reactive, ref } from "vue";
+import { RouterLink, useRoute, useRouter } from "vue-router";
 
 import AuthPasswordField from "../components/AuthPasswordField.vue";
 import { useAuthStore } from "../stores/auth";
 
 const router = useRouter();
+const route = useRoute();
 const authStore = useAuthStore();
-const accountId = ref("");
+const accountId = ref(typeof route.query.accountId === "string" ? route.query.accountId : "");
 const password = ref("");
+const signupCompleted = computed(() => route.query.registered === "1");
 const isSubmitting = ref(false);
 const formError = ref("");
 const fieldErrors = reactive({
@@ -79,6 +81,10 @@ async function submitLogin() {
       </header>
 
       <form class="auth-form" novalidate @submit.prevent="submitLogin">
+        <p v-if="signupCompleted" class="auth-form-success" role="status">
+          회원가입이 완료되었습니다. 비밀번호를 입력해 로그인해 주세요.
+        </p>
+
         <div class="auth-field" :class="{ 'has-error': fieldErrors.accountId }">
           <label for="login-id">아이디</label>
           <span class="auth-input-wrap">

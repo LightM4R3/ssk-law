@@ -1,3 +1,5 @@
+import re
+
 from rest_framework import serializers
 
 from .models import Account
@@ -26,6 +28,15 @@ class AccountSerializer(serializers.ModelSerializer):
         value = value.strip()
         if not value:
             raise serializers.ValidationError("닉네임을 입력해 주세요.")
+        return value
+
+    def validate_password(self, value):
+        if not re.search(r"[a-z]", value):
+            raise serializers.ValidationError("비밀번호에 영문 소문자가 포함되어야 합니다.")
+        if not re.search(r"[A-Z]", value):
+            raise serializers.ValidationError("비밀번호에 영문 대문자가 포함되어야 합니다.")
+        if not re.search(r"\d", value):
+            raise serializers.ValidationError("비밀번호에 숫자가 포함되어야 합니다.")
         return value
 
     def create(self, validated_data):

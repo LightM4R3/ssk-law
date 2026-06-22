@@ -17,13 +17,13 @@ class AccountApiTests(APITestCase):
             self.list_url,
             {
                 "id": account_id,
-                "password": "password123",
+                "password": "Password123",
                 "nickname": nickname,
             },
             format="json",
         )
 
-    def login(self, account_id="tester", password="password123"):
+    def login(self, account_id="tester", password="Password123"):
         return self.client.post(
             self.login_url,
             {"id": account_id, "password": password},
@@ -36,8 +36,8 @@ class AccountApiTests(APITestCase):
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertNotIn("password", response.data)
         account = Account.objects.get(idx=response.data["idx"])
-        self.assertNotEqual(account.password, "password123")
-        self.assertTrue(account.check_password("password123"))
+        self.assertNotEqual(account.password, "Password123")
+        self.assertTrue(account.check_password("Password123"))
 
     def test_list_and_retrieve_accounts(self):
         created = self.create_account().data
@@ -61,7 +61,7 @@ class AccountApiTests(APITestCase):
 
         response = self.client.patch(
             detail_url,
-            {"nickname": "수정된닉네임", "password": "newpassword123"},
+            {"nickname": "수정된닉네임", "password": "Newpassword123"},
             format="json",
         )
 
@@ -69,7 +69,7 @@ class AccountApiTests(APITestCase):
         self.assertNotIn("password", response.data)
         account = Account.objects.get(idx=created["idx"])
         self.assertEqual(account.nickname, "수정된닉네임")
-        self.assertTrue(account.check_password("newpassword123"))
+        self.assertTrue(account.check_password("Newpassword123"))
 
     def test_delete_account(self):
         created = self.create_account().data
@@ -100,6 +100,23 @@ class AccountApiTests(APITestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(Account.objects.count(), 0)
+
+    def test_password_requires_uppercase_lowercase_and_number(self):
+        invalid_passwords = ["lowercase123", "UPPERCASE123", "NoNumbersHere"]
+
+        for index, password in enumerate(invalid_passwords):
+            response = self.client.post(
+                self.list_url,
+                {
+                    "id": f"tester-{index}",
+                    "password": password,
+                    "nickname": f"테스터-{index}",
+                },
+                format="json",
+            )
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
         self.assertEqual(Account.objects.count(), 0)
 
     def test_protected_account_endpoints_require_login(self):
@@ -168,18 +185,18 @@ class AccountApiTests(APITestCase):
 
     def test_login_and_signup_require_csrf_token(self):
         account = Account(id="tester", nickname="테스터")
-        account.set_password("password123")
+        account.set_password("Password123")
         account.save()
         csrf_client = APIClient(enforce_csrf_checks=True)
 
         login_without_token = csrf_client.post(
             self.login_url,
-            {"id": "tester", "password": "password123"},
+            {"id": "tester", "password": "Password123"},
             format="json",
         )
         signup_without_token = csrf_client.post(
             self.list_url,
-            {"id": "new-user", "password": "password123", "nickname": "신규"},
+            {"id": "new-user", "password": "Password123", "nickname": "신규"},
             format="json",
         )
 
@@ -187,7 +204,7 @@ class AccountApiTests(APITestCase):
         csrf_token = csrf_client.cookies["csrftoken"].value
         login_with_token = csrf_client.post(
             self.login_url,
-            {"id": "tester", "password": "password123"},
+            {"id": "tester", "password": "Password123"},
             format="json",
             HTTP_X_CSRFTOKEN=csrf_token,
         )
