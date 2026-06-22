@@ -174,6 +174,12 @@ export const lawApi = {
       body: JSON.stringify({ query }),
     });
   },
+  explainSearch(query) {
+    return request("/api/search/explain", {
+      method: "POST",
+      body: JSON.stringify({ query }),
+    });
+  },
   sendChat(message, sessionKey) {
     return request("/api/chat", {
       method: "POST",

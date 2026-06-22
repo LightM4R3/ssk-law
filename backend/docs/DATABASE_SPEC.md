@@ -210,7 +210,44 @@ erDiagram
 
 ---
 
-### 3.6 `chat_session` — 챗봇 대화 세션
+### 3.6 `sync_run` — OpenAPI 동기화 실행 이력
+
+| 컬럼 | 타입 | 제약 | 설명 |
+|---|---|---|---|
+| `id` | BIGINT | PK | 실행 식별자 |
+| `trigger` | VARCHAR(20) | NOT NULL | `manual`, `scheduled`, `catchup` |
+| `status` | VARCHAR(20) | NOT NULL | 실행·성공·변경 없음·부분 성공·실패·생략 상태 |
+| `started_at` | DATETIME | NOT NULL | 실행 시작 시각 |
+| `finished_at` | DATETIME | NULL | 실행 종료 시각 |
+| `fetched_count` | INT | NOT NULL | OpenAPI 응답 법안 수 |
+| `created_count` | INT | NOT NULL | 신규 저장 수 |
+| `updated_count` | INT | NOT NULL | 실제 변경 수 |
+| `failed_count` | INT | NOT NULL | 실패한 요청 또는 행 수 |
+| `error_message` | TEXT | NOT NULL | 오류 요약 |
+
+`status=running`인 행은 DB 제약으로 한 건만 허용합니다.
+
+### 3.7 `bill_processing_task` — 법안 후처리 작업
+
+| 컬럼 | 타입 | 제약 | 설명 |
+|---|---|---|---|
+| `bill_id` | BIGINT | FK | 대상 법안 |
+| `processor` | VARCHAR(50) | NOT NULL | `summary`, `similarity` 등 processor key |
+| `processor_version` | VARCHAR(20) | NOT NULL | processor 버전 |
+| `status` | VARCHAR(20) | NOT NULL | `pending`, `running`, `retry`, `succeeded`, `failed` |
+| `attempt_count` | INT | NOT NULL | 실행 시도 횟수 |
+| `max_attempts` | INT | NOT NULL | 최초 실행을 포함한 최대 시도 횟수 |
+| `next_attempt_at` | DATETIME | NULL | 다음 재시도 가능 시각 |
+| `last_error` | TEXT | NOT NULL | 마지막 오류 |
+| `started_at` | DATETIME | NULL | 최근 실행 시작 시각 |
+| `finished_at` | DATETIME | NULL | 최종 완료 시각 |
+
+법안·processor·버전 조합은 유일합니다. 유사도 processor는 요약 processor에 의존하지만,
+유사도 실패가 법안 또는 요약의 노출을 막지는 않습니다.
+
+---
+
+### 3.8 `chat_session` — 챗봇 대화 세션
 
 > 로그인 없이 `anonymous_session_id` 방식으로 운영합니다.
 
@@ -223,7 +260,7 @@ erDiagram
 
 ---
 
-### 3.7 `chat_message` — 챗봇 메시지
+### 3.9 `chat_message` — 챗봇 메시지
 
 | 컬럼 | 타입 | 제약 | 설명 |
 |------|------|------|------|
@@ -249,6 +286,8 @@ erDiagram
 | `bill_category` | `idx_bc_category` | B-Tree | 분야별 법안 조회 |
 | `bill_summary` | `idx_bs_bill` | UNIQUE | 법안별 요약 1:1 조회 |
 | `similar_bill` | `idx_sb_source` | B-Tree | 기준 법안의 유사 법안 조회 |
+| `sync_run` | `idx_sync_status_time` | B-Tree | 상태별 최근 실행 조회 |
+| `bill_processing_task` | `idx_task_status_due` | B-Tree | 실행 가능한 후처리 작업 조회 |
 | `chat_session` | `idx_cs_key` | UNIQUE | 세션 키 조회 |
 | `chat_message` | `idx_cm_session` | B-Tree | 세션별 메시지 시간순 조회 |
 
@@ -329,5 +368,7 @@ erDiagram
 | `bill_category` | `bills` | `BillCategory` |
 | `bill_summary` | `bills` | `BillSummary` |
 | `similar_bill` | `bills` | `SimilarBill` |
+| `sync_run` | `bills` | `SyncRun` |
+| `bill_processing_task` | `bills` | `BillProcessingTask` |
 | `chat_session` | `chat` | `ChatSession` |
 | `chat_message` | `chat` | `ChatMessage` |

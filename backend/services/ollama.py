@@ -2,27 +2,42 @@
 
 import json
 import logging
+import re
+import unicodedata
+
 import requests
 from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-OLLAMA_TIMEOUT = 60  # seconds
+PLAIN_DISCLAIMER = "※ 이 설명은 참고용이며 법률 자문을 대신하지 않습니다."
 
 
-def _call_ollama(prompt: str, system: str = "") -> str | None:
+def _call_ollama(
+    prompt: str,
+    system: str = "",
+    *,
+    model: str | None = None,
+    options: dict | None = None,
+    response_format: str | dict | None = None,
+) -> str | None:
     """Send a prompt to Ollama and return the response text, or None on failure."""
     url = f"{settings.OLLAMA_BASE_URL}/api/generate"
     payload = {
-        "model": settings.OLLAMA_MODEL,
+        "model": model or settings.OLLAMA_MODEL,
         "prompt": prompt,
         "stream": False,
+        "keep_alive": settings.OLLAMA_KEEP_ALIVE,
     }
     if system:
         payload["system"] = system
+    if options:
+        payload["options"] = options
+    if response_format:
+        payload["format"] = response_format
 
     try:
-        resp = requests.post(url, json=payload, timeout=OLLAMA_TIMEOUT)
+        resp = requests.post(url, json=payload, timeout=settings.OLLAMA_TIMEOUT)
         resp.raise_for_status()
         return resp.json().get("response", "")
     except Exception as e:
@@ -70,7 +85,12 @@ def summarize_bill(title: str, proposer: str, committee: str = "", content: str 
 
 - categories는 위 후보군(labor, welfare, housing, economy, education, env, digital, health, safety) 중 가장 깊이 연관된 1~2개 슬러그를 선택하여 JSON 배열로 리턴하세요. 없는 경우 빈 배열을 리턴하세요."""
 
-    text = _call_ollama(prompt, system)
+    text = _call_ollama(
+        prompt,
+        system,
+        options={"temperature": 0.1, "num_predict": 500},
+        response_format="json",
+    )
     if not text:
         return None
 
@@ -102,7 +122,13 @@ def search_bills(query: str, bill_list_text: str) -> dict | None:
 반드시 이 JSON 형식으로만 응답하세요 (다른 텍스트 절대 금지):
 {{"intro":"친근한 2-3문장 한국어 답변","ids":["id1","id2","id3"]}}"""
 
-    text = _call_ollama(prompt, system)
+    text = _call_ollama(
+        prompt,
+        system,
+        model=settings.OLLAMA_REALTIME_MODEL,
+        options={"temperature": 0.2, "num_predict": 220},
+        response_format="json",
+    )
     if not text:
         return None
 
@@ -131,7 +157,10 @@ def chat_reply(message: str, context: str, history: str = "") -> str | None:
         "[서술 지침 - 단정적 표현 금지]\n"
         "법적 해석에 대해 단정적인 표현('~야', '~입니다', '~가 확실해', '~가 맞아' 등)을 절대로 사용하지 마세요. "
         "대신 '~로 예상돼', '~할 가능성이 있어', '~라고 해석될 수 있어', '~라는 전례가 있지만 구체적인 상황에 따라 달라질 수 있어' 등 "
-        "중립적이고 신중한 표현을 사용해야 합니다."
+        "중립적이고 신중한 표현을 사용해야 합니다.\n"
+        "Markdown, 제목, 목록, 강조 표시, 이모지, 인사말을 사용하지 마세요. "
+        "질문을 반복하지 말고 핵심 설명만 일반 텍스트 4문장 이내로 작성하세요. "
+        "면책 문구는 시스템이 별도로 붙이므로 생성하지 마세요."
     )
     prompt_parts = []
     if context:
@@ -140,8 +169,67 @@ def chat_reply(message: str, context: str, history: str = "") -> str | None:
         prompt_parts.append(f"[이전 대화]\n{history}\n")
     prompt_parts.append(f"사용자: {message}\n어시스턴트:")
 
-    text = _call_ollama("\n".join(prompt_parts), system)
-    return text
+    text = _call_ollama(
+        "\n".join(prompt_parts),
+        system,
+        model=settings.OLLAMA_REALTIME_MODEL,
+        options={"temperature": 0.2, "num_predict": 260},
+    )
+    return clean_plain_text(text, max_chars=600) if text else None
+
+
+def explain_search(query: str, context: str) -> str | None:
+    """Generate a short plain-text explanation after DB search results are ready."""
+    # system = (
+    #     "당신은 국회 발의안을 일반 시민에게 짧고 정확하게 설명하는 슥법 검색 도우미입니다. "
+    #     "반드시 제공된 법안 정보만 사용하세요. "
+    #     "Markdown, 특수 강조, 제목, 목록, 이모지, 인사말, 질문 반복, 면책 문구를 사용하지 마세요. "
+    #     "관련성이 높은 이유와 법안 핵심만 일반 텍스트 2~3문장, 250자 이내로 작성하세요. "
+    #     "확정적인 법률 자문처럼 말하지 마세요."
+    # )
+    system = (
+        "너는 국회 법안 검색 결과를 간결하게 설명하는 안내자다."
+        "제공된 법안 데이터만 근거로 답변하라."
+
+        "규칙:"
+        "- 직접 관련 법안과 간접 관련 법안을 구분한다."
+        "- 직접 관련 법안이 없으면 그 사실을 명확히 밝힌다."
+        "- 간접 관련 법안은 관련된 이유를 한 문장으로 설명한다."
+        "- 관련성이 낮은 법안은 언급하지 않는다."
+        "- 법안에 없는 내용을 추측하거나 만들어내지 않는다."
+        "- 마크다운, 목록, 이모지, 인사말을 사용하지 않는다."
+        "- 최대 3문장, 250자 이내의 일반 텍스트로 작성한다."
+    )
+    prompt = f"사용자 검색어: {query}\n\n검색된 법안:\n{context}"
+    text = _call_ollama(
+        prompt,
+        system,
+        model=settings.OLLAMA_REALTIME_MODEL,
+        options={"temperature": 0.1, "num_predict": 160},
+    )
+    return clean_plain_text(text, max_chars=320) if text else None
+
+
+def clean_plain_text(text: str, max_chars: int = 600) -> str:
+    """Normalize model output for safe plain-text rendering."""
+    value = str(text or "").strip()
+    value = re.sub(r"```(?:\w+)?", "", value)
+    value = re.sub(r"\[([^\]]+)\]\([^\)]+\)", r"\1", value)
+    value = re.sub(r"(?m)^\s{0,3}(?:#{1,6}|[-*+]\s+|\d+[.)]\s+)", "", value)
+    value = value.replace("**", "").replace("__", "").replace("`", "")
+    value = re.sub(r"(?m)^\s*---+\s*$", "", value)
+    value = re.split(r"(?:면책\s*조항|본 답변은 참고용)", value, maxsplit=1)[0]
+    value = "".join(
+        char
+        for char in value
+        if unicodedata.category(char) not in {"So", "Sk"}
+    )
+    value = re.sub(r"\s+", " ", value).strip(" -*_\n\t")
+    if len(value) > max_chars:
+        shortened = value[:max_chars]
+        sentence_end = max(shortened.rfind("."), shortened.rfind("다."), shortened.rfind("요."))
+        value = shortened[: sentence_end + 1] if sentence_end >= max_chars // 2 else shortened.rstrip() + "…"
+    return value
 
 
 def analyze_user_query(message: str) -> dict | None:
@@ -170,7 +258,13 @@ def analyze_user_query(message: str) -> dict | None:
 - Low: 단순 법률 절차 문의, 일상적인 피해 구제 방법 상담(예: 보증금 미반환 대처, 부당해고 구제 절차 등), 일반적인 법안/법령 정보 질문.
 """
 
-    text = _call_ollama(prompt, system)
+    text = _call_ollama(
+        prompt,
+        system,
+        model=settings.OLLAMA_REALTIME_MODEL,
+        options={"temperature": 0.1, "num_predict": 260},
+        response_format="json",
+    )
     if not text:
         return None
 

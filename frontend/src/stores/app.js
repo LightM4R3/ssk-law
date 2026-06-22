@@ -154,6 +154,8 @@ export const useAppStore = defineStore("app", {
     activeBillId: null,
     activeSimilar: null,
     searchLoading: false,
+    searchAiLoading: false,
+    searchAiStatus: "idle",
     searchError: null,
     searchIntro: "",
     searchSnapshot: null,
@@ -352,10 +354,13 @@ export const useAppStore = defineStore("app", {
       this.lastSearchQuery = normalizedQuery;
       this.searchIntro = "";
       this.searchSnapshot = null;
+      this.searchAiLoading = false;
+      this.searchAiStatus = "idle";
       this.searchError = null;
 
       if (!normalizedQuery) {
         this.searchResults = [];
+        this.searchLoading = false;
         return;
       }
 
@@ -363,15 +368,40 @@ export const useAppStore = defineStore("app", {
 
       try {
         const payload = await lawApi.searchBills(normalizedQuery);
+        if (this.lastSearchQuery !== normalizedQuery) return;
         this.searchIntro = payload?.intro || "";
         this.searchSnapshot = payload?.snapshot || null;
         this.searchResults = extractArray(payload, "bills")
           .map((bill, index) => withBillPresentation(normalizeApiBill(bill), index));
+        this.searchLoading = false;
+
+        if (payload?.aiPending) {
+          this.searchAiLoading = true;
+          this.searchAiStatus = "loading";
+          try {
+            const explanation = await lawApi.explainSearch(normalizedQuery);
+            if (this.lastSearchQuery !== normalizedQuery) return;
+            this.searchIntro = explanation?.intro || this.searchIntro;
+            this.searchSnapshot = explanation?.snapshot || this.searchSnapshot;
+            this.searchAiStatus = explanation?.aiStatus || "ready";
+          } catch (error) {
+            if (this.lastSearchQuery === normalizedQuery) {
+              this.searchAiStatus = "unavailable";
+            }
+          } finally {
+            if (this.lastSearchQuery === normalizedQuery) {
+              this.searchAiLoading = false;
+            }
+          }
+        }
       } catch (error) {
+        if (this.lastSearchQuery !== normalizedQuery) return;
         this.searchError = getApiErrorState(error, "검색 결과를 슥 가져오지 못하고 있어요");
         this.searchResults = [];
       } finally {
-        this.searchLoading = false;
+        if (this.lastSearchQuery === normalizedQuery) {
+          this.searchLoading = false;
+        }
       }
     },
     openBill(id) {

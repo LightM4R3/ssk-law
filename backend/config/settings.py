@@ -131,3 +131,19 @@ ASSEMBLY_API_BASE_URL = os.environ.get(
 
 OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:e4b")
+OLLAMA_REALTIME_MODEL = os.environ.get("OLLAMA_REALTIME_MODEL", "gemma3:4b")
+OLLAMA_TIMEOUT = int(os.environ.get("OLLAMA_TIMEOUT", "180"))
+OLLAMA_KEEP_ALIVE = os.environ.get("OLLAMA_KEEP_ALIVE", "30m")
+
+# Bill ingestion and post-processing
+ASSEMBLY_SYNC_PAGES = int(os.environ.get("ASSEMBLY_SYNC_PAGES", "10"))
+BILL_PROCESSORS = [
+    path.strip()
+    for path in os.environ.get(
+        "BILL_PROCESSORS",
+        "bills.services.processors.SummaryProcessor",
+    ).split(",")
+    if path.strip()
+]
+BILL_TASK_RETRY_DELAYS = [60, 300, 1800]
+BILL_TASK_STALE_MINUTES = 10

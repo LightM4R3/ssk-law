@@ -2,15 +2,16 @@
 
 import math
 import json
+import re
 
 from django.db.models import Count
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
-from .models import Bill, BillSummary, Category
+from .models import Bill, BillSummary, Category, SyncRun
 from .serializers import BillDetailSerializer, BillListSerializer, CategorySerializer
-from services.ollama import search_bills, analyze_user_query, chat_reply
+from services.ollama import PLAIN_DISCLAIMER, explain_search
 from chat.masking import mask_personal_info
 from chat.models import ChatSession, ChatMessage
 from django.db.models import Q
@@ -46,7 +47,7 @@ def picks_view(request):
         Bill.objects
         .filter(summary__isnull=False)
         .select_related("summary")
-        .prefetch_related("bill_categories__category", "similar_bills")
+        .prefetch_related("bill_categories__category", "similar_bills", "processing_tasks")
         .order_by("-view_count")[:5]
     )
     if not bills:
@@ -54,7 +55,7 @@ def picks_view(request):
         bills = (
             Bill.objects
             .select_related("summary")
-            .prefetch_related("bill_categories__category", "similar_bills")
+            .prefetch_related("bill_categories__category", "similar_bills", "processing_tasks")
             .order_by("-proposed_at")[:5]
         )
     serializer = BillListSerializer(bills, many=True)
@@ -81,7 +82,7 @@ def bills_list_view(request):
     page_size = min(int(request.query_params.get("page_size", 20)), 100)
 
     qs = Bill.objects.select_related("summary").prefetch_related(
-        "bill_categories__category", "similar_bills"
+        "bill_categories__category", "similar_bills", "processing_tasks"
     )
 
     if category != "all":
@@ -119,7 +120,7 @@ def bill_detail_view(request, bill_id):
         bill = (
             Bill.objects
             .select_related("summary")
-            .prefetch_related("bill_categories__category", "similar_bills")
+            .prefetch_related("bill_categories__category", "similar_bills", "processing_tasks")
             .get(bill_id=bill_id)
         )
     except Bill.DoesNotExist:
@@ -128,7 +129,7 @@ def bill_detail_view(request, bill_id):
             bill = (
                 Bill.objects
                 .select_related("summary")
-                .prefetch_related("bill_categories__category", "similar_bills")
+                .prefetch_related("bill_categories__category", "similar_bills", "processing_tasks")
                 .get(pk=bill_id)
             )
         except (Bill.DoesNotExist, ValueError):
@@ -145,11 +146,33 @@ def bill_detail_view(request, bill_id):
 
 
 # ---------------------------------------------------------------------------
+# GET /api/sync/status
+# ---------------------------------------------------------------------------
+@api_view(["GET"])
+def sync_status_view(request):
+    """최근 OpenAPI 동기화 상태. 외부 서비스를 호출하지 않습니다."""
+    last_attempt = SyncRun.objects.exclude(status="skipped").first()
+    last_success = SyncRun.objects.filter(status__in=["success", "no_changes"]).first()
+    last_new_bill = SyncRun.objects.filter(created_count__gt=0).exclude(status="failed").first()
+
+    return Response(
+        {
+            "lastAttemptAt": last_attempt.started_at if last_attempt else None,
+            "lastSuccessAt": last_success.finished_at if last_success else None,
+            "lastNewBillAt": last_new_bill.finished_at if last_new_bill else None,
+            "status": last_attempt.status if last_attempt else "never",
+            "createdCount": last_attempt.created_count if last_attempt else 0,
+            "error": last_attempt.error_message if last_attempt else "",
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
 # POST /api/search
 # ---------------------------------------------------------------------------
 @api_view(["POST"])
 def search_view(request):
-    """자연어 검색 (AI)."""
+    """Return DB search results immediately without waiting for the LLM."""
     query = request.data.get("query", "").strip()
     if not query:
         return Response(
@@ -157,48 +180,15 @@ def search_view(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # 1. 개인정보 마스킹 처리
     masked_query = mask_personal_info(query)
-
-    # 2. Zero-shot 구조화 분석
-    analysis = analyze_user_query(masked_query)
-    if not analysis:
-        analysis = {
-            "summary": "구조화 분석 실패",
-            "issue": "구조화 분석 실패",
-            "keywords": [],
-            "risk_level": "Low"
-        }
-
-    # 3. 위험 질문 차단 검사 (법 회피·범죄·증거 인멸)
-    dangerous_keywords = [
-        '마약', '탈세', '증거인멸', '증거 인멸', '블랙박스 삭제', '블랙박스 영상 삭제', 
-        '필로폰', '대마', '안 걸리는', '피하는 팁', '세무조사 피', '영구 삭제', 
-        '카카오톡 삭제', '대화 삭제', '대화 내역 삭제', '카카오톡 대화 내역', '거래 시 안',
-        '처벌 수위를 낮추기 위해 블랙박스'
-    ]
-
-    is_dangerous = False
-    risk_level = str(analysis.get("risk_level", "Low")).strip().upper()
-    if risk_level == "HIGH":
-        is_dangerous = True
-
-    text_to_check = (masked_query + " " + str(analysis.get("summary", "")) + " " + str(analysis.get("issue", ""))).lower()
-    for dk in dangerous_keywords:
-        if dk.lower() in text_to_check:
-            is_dangerous = True
-            analysis["risk_level"] = "High"
-            break
-
-    # 검색 세션 생성 및 메시지 저장용
+    analysis = _analyze_search_query(masked_query)
+    is_dangerous = analysis["risk_level"] == "High"
     session_key = request.data.get("session_key") or "search_session"
     session, _ = ChatSession.objects.get_or_create(session_key=session_key)
+    ChatMessage.objects.create(session=session, role="user", content=masked_query)
 
     if is_dangerous:
         intro = "범죄 모의, 증거 인멸, 법망 회피 등 위법 행위와 관련된 질문에는 답변을 제공할 수 없습니다."
-        
-        # DB 저장 (스냅샷 저장)
-        ChatMessage.objects.create(session=session, role="user", content=masked_query)
         ChatMessage.objects.create(
             session=session,
             role="assistant",
@@ -212,73 +202,153 @@ def search_view(request):
                 "intro": intro,
                 "ids": [],
                 "bills": [],
-                "snapshot": analysis
+                "snapshot": analysis,
+                "aiPending": False,
             }
         )
 
-    # 4. 관련 법안/법령 검색
     keywords = analysis.get("keywords", [])
     matched = _search_bills_by_keywords_for_search(keywords)
-
-    # 5. context 구축
-    if matched:
-        context_lines = []
-        for b in matched:
-            cats = ", ".join(bc.category.label for bc in b.bill_categories.all())
-            s1 = ""
-            try:
-                s1 = b.summary.summary_1
-            except BillSummary.DoesNotExist:
-                pass
-            context_lines.append(f"- [{b.bill_id}] {b.title} ({cats}) - {s1[:80]}")
-        context = "\n".join(context_lines)
-    else:
-        # fallback context
-        bills = Bill.objects.select_related("summary").prefetch_related("bill_categories__category")
-        context_lines = []
-        for b in bills[:30]:
-            cats = ", ".join(bc.category.label for bc in b.bill_categories.all())
-            s1 = ""
-            try:
-                s1 = b.summary.summary_1
-            except BillSummary.DoesNotExist:
-                pass
-            context_lines.append(f"- [{b.bill_id}] {b.title} ({cats}) - {s1[:80]}")
-        context = "\n".join(context_lines)
-
-    # 6. 답변 생성 (단정 표현 방지 지침 및 Disclaimer 자동 삽입)
-    intro = chat_reply(masked_query, context)
-    if not intro:
-        intro = (
-            "지금은 AI 서비스에 연결할 수 없어요. 😅\n"
-            "잠시 뒤에 다시 시도해 주세요!\n\n"
-            "그 사이에 최신 법안을 한번 둘러보는 건 어때요?"
+    if not matched:
+        matched = list(
+            Bill.objects.select_related("summary")
+            .prefetch_related("bill_categories__category", "similar_bills", "processing_tasks")
+            .order_by("-proposed_at")[:3]
         )
-    
-    DISCLAIMER = "\n\n---\n*면책조항: 본 답변은 참고용 법률 정보 및 국회 발의안 데이터에 기반하여 제공되는 것이며, 어떠한 법적 효력이나 공식적인 법률 자문을 대신할 수 없습니다. 구체적인 사안에 대해서는 반드시 법률 전문가와 상담하시기 바랍니다.*"
-    intro = intro + DISCLAIMER
-
-    # 7. 스냅샷 저장
-    ChatMessage.objects.create(session=session, role="user", content=masked_query)
-    
-    related_ids_json = json.dumps([b.bill_id for b in matched]) if matched else json.dumps([])
-    ChatMessage.objects.create(
-        session=session,
-        role="assistant",
-        content=intro,
-        related_bill_ids=related_ids_json,
-        snapshot=analysis
-    )
 
     serializer = BillListSerializer(matched, many=True)
     return Response(
         {
-            "intro": intro,
+            "intro": f"관련 법안 {len(matched)}건을 먼저 찾았습니다.",
             "ids": [b.bill_id for b in matched],
             "bills": serializer.data,
-            "snapshot": analysis
+            "snapshot": analysis,
+            "aiPending": True,
         }
     )
+
+
+# ---------------------------------------------------------------------------
+# POST /api/search/explain
+# ---------------------------------------------------------------------------
+@api_view(["POST"])
+def search_explain_view(request):
+    """Generate the optional AI explanation after DB results are rendered."""
+    query = request.data.get("query", "").strip()
+    if not query:
+        return Response(
+            {"error": {"code": "INVALID_QUERY", "message": "검색어를 입력해 주세요."}},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    masked_query = mask_personal_info(query)
+    analysis = _analyze_search_query(masked_query)
+    if analysis["risk_level"] == "High":
+        return Response(
+            {
+                "intro": "범죄 모의, 증거 인멸, 법망 회피 등 위법 행위와 관련된 질문에는 답변을 제공할 수 없습니다.",
+                "snapshot": analysis,
+                "aiStatus": "blocked",
+            }
+        )
+
+    matched = _search_bills_by_keywords_for_search(analysis["keywords"])
+    if not matched:
+        matched = list(
+            Bill.objects.select_related("summary")
+            .prefetch_related("bill_categories__category")
+            .order_by("-proposed_at")[:3]
+        )
+    context = _build_search_context(matched)
+    intro = explain_search(masked_query, context)
+    ai_status = "ready" if intro else "unavailable"
+    if not intro:
+        intro = f"관련 법안 {len(matched)}건을 찾았습니다. AI 설명은 잠시 후 다시 시도해 주세요."
+    intro = f"{intro}\n{PLAIN_DISCLAIMER}"
+
+    session_key = request.data.get("session_key") or "search_session"
+    session, _ = ChatSession.objects.get_or_create(session_key=session_key)
+    ChatMessage.objects.create(
+        session=session,
+        role="assistant",
+        content=intro,
+        related_bill_ids=json.dumps([bill.bill_id for bill in matched]),
+        snapshot=analysis,
+    )
+    return Response({"intro": intro, "snapshot": analysis, "aiStatus": ai_status})
+
+
+DANGEROUS_SEARCH_TERMS = (
+    "마약",
+    "탈세",
+    "증거인멸",
+    "증거 인멸",
+    "블랙박스 삭제",
+    "블랙박스 영상 삭제",
+    "필로폰",
+    "대마",
+    "안 걸리는",
+    "피하는 팁",
+    "세무조사 피",
+    "영구 삭제",
+    "카카오톡 삭제",
+    "대화 내역 삭제",
+    "거래 시 안",
+)
+
+SEARCH_STOPWORDS = {
+    "관련",
+    "법안",
+    "법률",
+    "알려줘",
+    "알려주세요",
+    "궁금해",
+    "궁금한데",
+    "대한",
+    "대해",
+    "어떤",
+}
+
+
+def _analyze_search_query(query):
+    tokens = re.findall(r"[가-힣A-Za-z0-9]+", query)
+    keywords = []
+    for token in tokens:
+        normalized = token.strip().lower()
+        if len(normalized) < 2 or normalized in SEARCH_STOPWORDS or normalized in keywords:
+            continue
+        keywords.append(normalized)
+        if len(keywords) == 5:
+            break
+    dangerous = any(term in query.lower() for term in DANGEROUS_SEARCH_TERMS)
+    return {
+        "summary": f"'{query}' 관련 법안 검색",
+        "issue": "검색어와 관련된 국회 발의안 확인",
+        "keywords": keywords,
+        "risk_level": "High" if dangerous else "Low",
+    }
+
+
+def _build_search_context(bills):
+    lines = []
+    for bill in bills[:5]:
+        categories = ", ".join(
+            mapping.category.label for mapping in bill.bill_categories.all()
+        )
+        try:
+            summary = " ".join(
+                part
+                for part in (
+                    bill.summary.summary_1,
+                    bill.summary.summary_2,
+                    bill.summary.summary_3,
+                )
+                if part
+            )
+        except BillSummary.DoesNotExist:
+            summary = "요약 준비 중"
+        lines.append(f"[{bill.bill_id}] {bill.title} | {categories} | {summary[:240]}")
+    return "\n".join(lines)
 
 
 def _search_bills_by_keywords_for_search(keywords: list) -> list:
@@ -289,9 +359,21 @@ def _search_bills_by_keywords_for_search(keywords: list) -> list:
     query = Q()
     for kw in keywords:
         if kw:
-            query |= Q(title__icontains=kw) | Q(summary__summary_1__icontains=kw)
+            query |= (
+                Q(title__icontains=kw)
+                | Q(committee__icontains=kw)
+                | Q(summary__summary_1__icontains=kw)
+                | Q(summary__summary_2__icontains=kw)
+                | Q(summary__summary_3__icontains=kw)
+                | Q(bill_categories__category__label__icontains=kw)
+            )
             
-    return list(Bill.objects.filter(query).prefetch_related("bill_categories__category", "similar_bills").distinct()[:5])
+    return list(
+        Bill.objects.filter(query)
+        .select_related("summary")
+        .prefetch_related("bill_categories__category", "similar_bills", "processing_tasks")
+        .distinct()[:5]
+    )
 
 
 def _keyword_fallback(query, bills):

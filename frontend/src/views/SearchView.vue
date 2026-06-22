@@ -60,12 +60,25 @@ watch(query, (value) => {
       </div>
     </div>
 
+    <div v-else-if="store.searchAiLoading" class="ai-card">
+      <div class="ai-avatar">슥</div>
+      <div class="ai-body">
+        <div class="ai-head">
+          <div class="ai-title">AI 설명 정리 중</div>
+        </div>
+        <div class="ai-text">
+          관련 법안은 먼저 표시했습니다. 짧은 설명을 정리하고 있습니다
+          <span class="ai-loading-dots"><span>.</span><span>.</span><span>.</span></span>
+        </div>
+      </div>
+    </div>
+
     <div v-else-if="store.searchIntro" class="ai-card">
       <div class="ai-avatar">슥</div>
       <div class="ai-body">
         <div class="ai-head">
           <div class="ai-title">AI 검색 요약</div>
-          <span v-if="store.searchSnapshot?.risk_level" class="ai-badge">{{ store.searchSnapshot.risk_level }}</span>
+          <span v-if="['High', 'Medium'].includes(store.searchSnapshot?.risk_level)" class="ai-badge">{{ store.searchSnapshot.risk_level }}</span>
         </div>
         <div class="ai-text">{{ store.searchIntro }}</div>
         <div v-if="store.searchSnapshot?.keywords?.length" class="ai-keywords">

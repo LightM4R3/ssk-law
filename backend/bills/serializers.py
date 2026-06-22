@@ -41,6 +41,7 @@ class BillListSerializer(serializers.Serializer):
     comments = serializers.IntegerField(source="view_count")  # view_count doubles as comments for MVP
     impact = serializers.SerializerMethodField()
     similar = serializers.SerializerMethodField()
+    summaryStatus = serializers.SerializerMethodField()
 
     def get_categories(self, bill):
         bcs = bill.bill_categories.select_related("category").order_by("-is_primary")
@@ -75,6 +76,29 @@ class BillListSerializer(serializers.Serializer):
     def get_similar(self, bill):
         sims = bill.similar_bills.all()
         return SimilarBillSerializer(sims, many=True).data
+
+    def get_summaryStatus(self, bill):
+        try:
+            bill.summary
+            return "ready"
+        except BillSummary.DoesNotExist:
+            pass
+
+        tasks = [
+            task
+            for task in bill.processing_tasks.all()
+            if task.processor == "summary"
+        ]
+        if not tasks:
+            return "pending"
+        status = tasks[-1].status
+        return {
+            "running": "running",
+            "failed": "failed",
+            "pending": "pending",
+            "retry": "pending",
+            "succeeded": "pending",
+        }.get(status, "pending")
 
 
 class BillDetailSerializer(BillListSerializer):

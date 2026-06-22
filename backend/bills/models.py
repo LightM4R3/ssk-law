@@ -108,3 +108,89 @@ class SimilarBill(models.Model):
 
     def __str__(self):
         return self.title
+
+
+class SyncRun(models.Model):
+    """One execution of the National Assembly synchronization pipeline."""
+
+    TRIGGER_CHOICES = [
+        ("manual", "수동"),
+        ("scheduled", "정기"),
+        ("catchup", "13시 보정"),
+    ]
+    STATUS_CHOICES = [
+        ("running", "실행 중"),
+        ("success", "성공"),
+        ("no_changes", "변경 없음"),
+        ("partial", "부분 성공"),
+        ("failed", "실패"),
+        ("skipped", "건너뜀"),
+    ]
+
+    trigger = models.CharField(max_length=20, choices=TRIGGER_CHOICES, default="manual")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="running")
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    fetched_count = models.PositiveIntegerField(default=0)
+    created_count = models.PositiveIntegerField(default=0)
+    updated_count = models.PositiveIntegerField(default=0)
+    failed_count = models.PositiveIntegerField(default=0)
+    error_message = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "sync_run"
+        ordering = ["-started_at"]
+        indexes = [
+            models.Index(fields=["status", "-started_at"], name="idx_sync_status_time"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["status"],
+                condition=models.Q(status="running"),
+                name="uq_single_running_sync",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.started_at:%Y-%m-%d %H:%M} {self.status}"
+
+
+class BillProcessingTask(models.Model):
+    """Retryable post-processing work for a bill."""
+
+    STATUS_CHOICES = [
+        ("pending", "대기"),
+        ("running", "실행 중"),
+        ("retry", "재시도 대기"),
+        ("succeeded", "성공"),
+        ("failed", "실패"),
+    ]
+
+    bill = models.ForeignKey(Bill, on_delete=models.CASCADE, related_name="processing_tasks")
+    processor = models.CharField(max_length=50)
+    processor_version = models.CharField(max_length=20, default="v1")
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    attempt_count = models.PositiveIntegerField(default=0)
+    max_attempts = models.PositiveIntegerField(default=4)
+    next_attempt_at = models.DateTimeField(null=True, blank=True)
+    last_error = models.TextField(blank=True, default="")
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "bill_processing_task"
+        ordering = ["created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["bill", "processor", "processor_version"],
+                name="uq_bill_processor_version",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["status", "next_attempt_at"], name="idx_task_status_due"),
+        ]
+
+    def __str__(self):
+        return f"{self.bill.bill_id}:{self.processor}:{self.status}"
