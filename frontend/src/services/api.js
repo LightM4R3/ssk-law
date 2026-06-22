@@ -1,12 +1,32 @@
 const API_BASE = (import.meta.env.VITE_SSK_API_BASE || "").replace(/\/$/, "");
 
+function getCookie(name) {
+  const prefix = `${encodeURIComponent(name)}=`;
+  const cookie = document.cookie
+    .split(";")
+    .map((value) => value.trim())
+    .find((value) => value.startsWith(prefix));
+  return cookie ? decodeURIComponent(cookie.slice(prefix.length)) : "";
+}
+
 async function request(path, options = {}) {
+  const method = String(options.method || "GET").toUpperCase();
+  const headers = new Headers(options.headers || {});
+
+  if (options.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  if (!["GET", "HEAD", "OPTIONS", "TRACE"].includes(method)) {
+    const csrfToken = getCookie("csrftoken");
+    if (csrfToken) headers.set("X-CSRFToken", csrfToken);
+  }
+
   const response = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers || {}),
-    },
     ...options,
+    method,
+    headers,
+    credentials: "include",
   });
 
   if (!response.ok) {
@@ -185,5 +205,38 @@ export const lawApi = {
       method: "POST",
       body: JSON.stringify({ message, session_key: sessionKey }),
     });
+  },
+};
+
+export const authApi = {
+  getCsrfToken() {
+    return request("/api/auth/csrf");
+  },
+  login(id, password) {
+    return request("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ id, password }),
+    });
+  },
+  logout() {
+    return request("/api/auth/logout", { method: "POST" });
+  },
+  getCurrentAccount() {
+    return request("/api/auth/me");
+  },
+  signup(account) {
+    return request("/api/accounts", {
+      method: "POST",
+      body: JSON.stringify(account),
+    });
+  },
+  updateAccount(idx, changes) {
+    return request(`/api/accounts/${idx}`, {
+      method: "PATCH",
+      body: JSON.stringify(changes),
+    });
+  },
+  deleteAccount(idx) {
+    return request(`/api/accounts/${idx}`, { method: "DELETE" });
   },
 };

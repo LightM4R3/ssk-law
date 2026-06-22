@@ -30,6 +30,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "corsheaders",
     # Local
+    "accounts",
     "bills",
     "chat",
 ]
@@ -78,9 +79,15 @@ DATABASES = {
 }
 
 # ---------------------------------------------------------------------------
-# Auth (unused in MVP but required by Django)
+# Auth
 # ---------------------------------------------------------------------------
 AUTH_PASSWORD_VALIDATORS = []
+
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = "Lax"
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SAMESITE = "Lax"
+CSRF_COOKIE_SECURE = not DEBUG
 
 # ---------------------------------------------------------------------------
 # i18n
@@ -105,12 +112,20 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:5173",
 ]
 CORS_ALLOW_ALL_ORIGINS = DEBUG  # Allow all in dev
+CORS_ALLOW_CREDENTIALS = True
+
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
 
 # ---------------------------------------------------------------------------
 # DRF
 # ---------------------------------------------------------------------------
 REST_FRAMEWORK = {
-    "DEFAULT_AUTHENTICATION_CLASSES": [],
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "accounts.authentication.AccountSessionAuthentication",
+    ],
     "DEFAULT_PERMISSION_CLASSES": [
         "rest_framework.permissions.AllowAny",
     ],

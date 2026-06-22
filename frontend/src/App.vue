@@ -1,12 +1,14 @@
 <script setup>
-import { onMounted } from "vue";
-import { RouterLink, RouterView, useRouter } from "vue-router";
+import { computed, watch } from "vue";
+import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
 import BillModal from "./components/BillModal.vue";
 import SimilarBillModal from "./components/SimilarBillModal.vue";
 import { useAppStore } from "./stores/app";
 
 const store = useAppStore();
+const route = useRoute();
 const router = useRouter();
+const isAuthLayout = computed(() => route.meta.layout === "auth");
 
 function closeOpenOverlays() {
   if (store.activeBill) store.closeBill();
@@ -31,9 +33,10 @@ function selectTickerItem(item) {
   }
 }
 
-onMounted(() => {
-  store.loadInitialData();
-});
+watch(isAuthLayout, (authLayout) => {
+  if (authLayout) return;
+  if (store.apiStatus === "idle") store.loadInitialData();
+}, { immediate: true });
 </script>
 
 <template>
@@ -55,10 +58,12 @@ onMounted(() => {
         </RouterLink>
       </nav>
 
+      <RouterLink class="account-link" :to="{ name: 'login' }">로그인</RouterLink>
+
     </div>
   </header>
 
-  <div class="ticker">
+  <div v-if="!isAuthLayout" class="ticker">
     <div class="ticker-inner">
       <div class="ticker-label"><span class="ticker-pulse"></span>지금 슥</div>
       <div class="ticker-viewport">
@@ -80,11 +85,11 @@ onMounted(() => {
     </div>
   </div>
 
-  <main>
+  <main :class="{ 'auth-main': isAuthLayout }">
     <RouterView />
   </main>
 
-  <footer>
+  <footer v-if="!isAuthLayout">
     슥법 · SSK-Law
   </footer>
 

@@ -539,6 +539,10 @@ python manage.py process_bill_tasks --limit 1
 | `400` | `INVALID_QUERY` | 검색어 누락 또는 유효하지 않은 질문 |
 | `400` | `INVALID_MESSAGE` | 챗봇 메시지 누락 |
 | `400` | `INVALID_PARAM` | 잘못된 파라미터 |
+| `401` | `UNAUTHORIZED` | 로그인 실패 또는 인증 세션 없음 |
+| `401` | `ACCOUNT_NOT_FOUND` | 존재하지 않는 로그인 아이디 |
+| `401` | `INVALID_PASSWORD` | 로그인 비밀번호 불일치 |
+| `403` | `FORBIDDEN` | CSRF 검증 실패 또는 접근 권한 없음 |
 | `404` | `NOT_FOUND` | 리소스를 찾을 수 없음 |
 | `500` | `INTERNAL_ERROR` | 서버 내부 오류 |
 | `503` | `AI_UNAVAILABLE` | AI 모델(Ollama) 연결 실패 |
@@ -592,3 +596,66 @@ python manage.py process_bill_tasks --limit 1
 
 - 프론트엔드 표시용: `YYYY.MM.DD` (예: `2026.05.07`)
 - 백엔드에서는 `proposedAt` 또는 `proposed_at` 형태로 전달하면 프론트엔드 어댑터가 이를 파싱하여 정상 표출합니다.
+
+---
+
+## 7. 계정 및 세션 인증 API
+
+계정 비밀번호는 Django 비밀번호 해시로 저장되며 모든 API 응답에서 제외됩니다. 인증은 HttpOnly Django 세션 쿠키를 사용합니다. 프론트엔드는 모든 요청에 쿠키를 포함하고, 상태 변경 요청에는 `csrftoken` 쿠키 값을 `X-CSRFToken` 헤더로 전달해야 합니다.
+
+### 7.1 `GET /api/auth/csrf` - CSRF 쿠키 발급
+
+로그인 또는 회원가입 전에 호출합니다.
+
+### 7.2 `POST /api/auth/login` - 로그인
+
+```json
+{
+  "id": "user01",
+  "password": "password123"
+}
+```
+
+성공하면 `account` 객체와 세션 쿠키를 반환합니다.
+
+### 7.3 `POST /api/auth/logout` - 로그아웃
+
+로그인이 필요하며 성공 시 `204 No Content`를 반환합니다.
+
+### 7.4 `GET /api/auth/me` - 현재 로그인 계정
+
+로그인이 필요하며 `account` 객체를 반환합니다.
+
+### 7.5 `POST /api/accounts` - 회원가입
+
+```json
+{
+  "id": "user01",
+  "password": "password123",
+  "nickname": "사용자"
+}
+```
+
+```json
+{
+  "idx": 1,
+  "id": "user01",
+  "nickname": "사용자",
+  "created_at": "2026-06-22T23:00:00+09:00",
+  "updated_at": "2026-06-22T23:00:00+09:00"
+}
+```
+
+### 7.6 `GET /api/accounts` - 내 계정 목록
+
+로그인이 필요하며 현재 로그인 계정 한 건만 배열로 반환합니다. 다른 계정은 노출하지 않습니다.
+
+### 7.7 `GET /api/accounts/{idx}` - 내 계정 상세
+
+### 7.8 `PUT/PATCH /api/accounts/{idx}` - 내 계정 수정
+
+비밀번호가 포함되면 새 비밀번호 해시로 교체합니다. `PATCH`에서는 변경할 필드만 전달할 수 있습니다.
+
+### 7.9 `DELETE /api/accounts/{idx}` - 내 계정 삭제
+
+성공 시 `204 No Content`를 반환합니다. 아이디와 닉네임은 각각 중복될 수 없고 비밀번호는 최소 8자입니다. 계정은 법안을 생성하거나 수정할 권한을 가지지 않으며, 향후 의견 포스트는 기존 법안 ID를 참조하는 방식으로 구현합니다.

@@ -16,6 +16,12 @@ def custom_exception_handler(exc, context):
         if response.status_code == 400:
             code = "INVALID_PARAM"
             message = _extract_message(response.data) or "잘못된 요청입니다."
+        elif response.status_code == 401:
+            code = "UNAUTHORIZED"
+            message = _extract_message(response.data) or "로그인이 필요합니다."
+        elif response.status_code == 403:
+            code = "FORBIDDEN"
+            message = _extract_message(response.data) or "접근 권한이 없습니다."
         elif response.status_code == 404:
             code = "NOT_FOUND"
             message = "해당 리소스를 찾을 수 없습니다."
