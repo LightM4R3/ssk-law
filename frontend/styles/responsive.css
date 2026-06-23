@@ -33,8 +33,11 @@
       padding: 8px 12px;
       font-size: 14px;
     }
-    .account-link {
+    .account-actions {
       grid-column: 2;
       grid-row: 1;
+    }
+    .account-nickname {
+      max-width: 110px;
     }
   }

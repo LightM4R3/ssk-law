@@ -1,14 +1,17 @@
 <script setup>
-import { computed, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
 import BillModal from "./components/BillModal.vue";
 import SimilarBillModal from "./components/SimilarBillModal.vue";
 import { useAppStore } from "./stores/app";
+import { useAuthStore } from "./stores/auth";
 
 const store = useAppStore();
+const authStore = useAuthStore();
 const route = useRoute();
 const router = useRouter();
 const isAuthLayout = computed(() => route.meta.layout === "auth");
+const isLoggingOut = ref(false);
 
 function closeOpenOverlays() {
   if (store.activeBill) store.closeBill();
@@ -32,6 +35,22 @@ function selectTickerItem(item) {
     router.push(item.route);
   }
 }
+
+async function logout() {
+  if (isLoggingOut.value) return;
+
+  isLoggingOut.value = true;
+  try {
+    await authStore.logout();
+    await router.push({ name: "home" });
+  } finally {
+    isLoggingOut.value = false;
+  }
+}
+
+onMounted(() => {
+  if (!authStore.initialized) authStore.loadCurrentAccount();
+});
 
 watch(isAuthLayout, (authLayout) => {
   if (authLayout) return;
@@ -58,7 +77,25 @@ watch(isAuthLayout, (authLayout) => {
         </RouterLink>
       </nav>
 
-      <RouterLink class="account-link" :to="{ name: 'login' }">로그인</RouterLink>
+      <div class="account-actions">
+        <template v-if="authStore.isAuthenticated">
+          <span class="account-nickname" :title="authStore.account.nickname">
+            {{ authStore.account.nickname }}님
+          </span>
+          <button
+            class="account-link"
+            type="button"
+            :disabled="isLoggingOut"
+            @click="logout"
+          >
+            {{ isLoggingOut ? "로그아웃 중..." : "로그아웃" }}
+          </button>
+        </template>
+        <RouterLink v-else-if="authStore.initialized" class="account-link" :to="{ name: 'login' }">
+          로그인
+        </RouterLink>
+        <span v-else class="account-session-status" role="status">세션 확인 중</span>
+      </div>
 
     </div>
   </header>
