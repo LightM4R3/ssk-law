@@ -5,9 +5,11 @@ import CategoryDetailView from "../views/CategoryDetailView.vue";
 import HomeView from "../views/HomeView.vue";
 import LatestView from "../views/LatestView.vue";
 import LoginView from "../views/LoginView.vue";
+import PostsView from "../views/PostsView.vue";
 import SearchView from "../views/SearchView.vue";
 import SignupView from "../views/SignupView.vue";
 import SimilarView from "../views/SimilarView.vue";
+import UserPageView from "../views/UserPageView.vue";
 import WeeklyView from "../views/WeeklyView.vue";
 
 const routes = [
@@ -15,6 +17,8 @@ const routes = [
   { path: "/latest", name: "latest", component: LatestView },
   { path: "/weekly", name: "weekly", component: WeeklyView },
   { path: "/categories", name: "categories", component: CategoriesView },
+  { path: "/posts", name: "posts", component: PostsView },
+  { path: "/users/:idx", name: "user-page", component: UserPageView, props: true },
   { path: "/categories/:id", name: "category-detail", component: CategoryDetailView, props: true },
   { path: "/search", name: "search", component: SearchView },
   { path: "/picks/:id/similar", name: "similar", component: SimilarView, props: true },

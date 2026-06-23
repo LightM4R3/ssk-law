@@ -54,6 +54,17 @@ class AccountApiTests(APITestCase):
         self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
         self.assertEqual(detail_response.data["id"], "tester")
 
+    def test_public_account_detail_exposes_only_profile_fields(self):
+        created = self.create_account().data
+
+        response = self.client.get(reverse("public-account-detail", kwargs={"idx": created["idx"]}))
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["idx"], created["idx"])
+        self.assertEqual(response.data["nickname"], created["nickname"])
+        self.assertNotIn("id", response.data)
+        self.assertNotIn("password", response.data)
+
     def test_patch_account_updates_nickname_and_password(self):
         created = self.create_account().data
         self.login()

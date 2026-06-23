@@ -20,7 +20,7 @@ function openWeeklyItem(item) {
     <div class="section-head">
       <div>
         <h2>이번 주 인기 법안</h2>
-        <div class="sub">이번 주 가장 많이 읽힌 법안을 순위로 확인합니다.</div>
+        <div class="sub">이번 주 가장 인기가 많은 법안을 확인할 수 있어요</div>
       </div>
     </div>
 

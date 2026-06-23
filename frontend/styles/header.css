@@ -10,6 +10,7 @@
   .topbar-inner {
     max-width: 1240px; margin: 0 auto; padding: 16px 32px;
     display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 24px;
+    position: relative;
   }
   .brand { display: flex; align-items: center; gap: 10px; font-weight: 700; font-size: 19px; letter-spacing: -0.02em; cursor: pointer; }
   .brand-mark {
@@ -33,6 +34,15 @@
   }
   .nav a:hover { background: var(--surface-2); color: var(--ink); }
   .nav a.active { background: var(--ink); color: #fff; }
+  .header-menu-toggle {
+    display: none;
+  }
+  .mobile-account-links {
+    display: none;
+  }
+  .mobile-bottom-nav {
+    display: none;
+  }
   .account-actions {
     display: flex;
     align-items: center;
@@ -55,7 +65,11 @@
     white-space: nowrap;
   }
   .account-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     min-width: 68px;
+    height: 38px;
     padding: 9px 14px;
     border: 1px solid var(--line-strong);
     border-radius: 8px;

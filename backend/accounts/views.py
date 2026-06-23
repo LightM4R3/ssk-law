@@ -8,7 +8,7 @@ from rest_framework.views import APIView
 
 from .authentication import AccountSessionAuthentication, SESSION_ACCOUNT_KEY
 from .models import Account
-from .serializers import AccountSerializer
+from .serializers import AccountSerializer, PublicAccountSerializer
 
 
 @method_decorator(csrf_protect, name="dispatch")
@@ -37,6 +37,14 @@ class AccountDetailView(generics.RetrieveUpdateDestroyAPIView):
     def perform_destroy(self, instance):
         instance.delete()
         self.request.session.flush()
+
+
+class PublicAccountDetailView(generics.RetrieveAPIView):
+    serializer_class = PublicAccountSerializer
+    permission_classes = [AllowAny]
+    queryset = Account.objects.all()
+    lookup_field = "idx"
+    lookup_url_kwarg = "idx"
 
 
 @method_decorator(ensure_csrf_cookie, name="dispatch")

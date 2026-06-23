@@ -12,10 +12,10 @@ import {
 } from "../services/api";
 
 const navItems = [
-  { name: "home", label: "홈" },
   { name: "latest", label: "최신 법안" },
   { name: "weekly", label: "인기 법안" },
   { name: "categories", label: "분야별" },
+  { name: "posts", label: "포스트" },
 ];
 
 const billLayout = [

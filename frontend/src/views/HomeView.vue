@@ -18,14 +18,14 @@ const isLoadingPicks = computed(() => store.apiStatus === "loading" && !picks.va
 const curationCopy = computed(() => {
   if (store.apiStatus === "ready" || store.apiStatus === "partial") {
     return {
-      eyebrow: "백엔드 추천 기준 · 요약이 준비된 법안",
-      sub: "백엔드가 추천한 다섯 법안을 확인하세요.",
+      eyebrow: "시민 생활과 가까운 오늘의 법안",
+      sub: "오늘 눈여겨볼 만한 법안을 슥 골라봤어요.",
     };
   }
 
   return {
-    eyebrow: "추천 법안",
-    sub: "추천 법안을 확인하세요.",
+    eyebrow: "오늘의 법안",
+    sub: "오늘 눈여겨볼 만한 법안을 확인하세요.",
   };
 });
 
@@ -40,18 +40,14 @@ function submitSearch() {
 <template>
   <section class="view active">
     <div class="search-row">
-      <label class="search">
+      <form class="search" @submit.prevent="submitSearch">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
           <circle cx="11" cy="11" r="7" />
           <path d="m21 21-4.3-4.3" />
         </svg>
         <input v-model="query" placeholder="슥, 찾아보세요 · 예: 청년 월세, 플랫폼 노동, 기후" autocomplete="off" @keydown.enter="submitSearch" />
-        <span class="suk-caret">슥</span>
-        <span class="kbd">⌘ K</span>
-      </label>
-      <button class="sort-btn" type="button" @click="submitSearch">
-        <span>오늘의 큐레이션</span>
-      </button>
+        <button class="suk-caret" type="submit" aria-label="search">&#49829;</button>
+      </form>
     </div>
 
     <div class="section-head">

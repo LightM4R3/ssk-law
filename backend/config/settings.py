@@ -33,6 +33,7 @@ INSTALLED_APPS = [
     "accounts",
     "bills",
     "chat",
+    "posts",
 ]
 
 # ---------------------------------------------------------------------------
@@ -162,3 +163,6 @@ BILL_PROCESSORS = [
 ]
 BILL_TASK_RETRY_DELAYS = [60, 300, 1800]
 BILL_TASK_STALE_MINUTES = 10
+POST_VIEW_COUNT_SESSION_COOLDOWN_SECONDS = int(
+    os.environ.get("POST_VIEW_COUNT_SESSION_COOLDOWN_SECONDS", "1800")
+)

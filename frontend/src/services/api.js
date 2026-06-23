@@ -174,6 +174,53 @@ export function normalizeBill(bill, options = {}) {
   };
 }
 
+export function normalizePost(post, options = {}) {
+  const id = Number(post?.idx ?? post?.id ?? 0);
+  const billId = String(post?.bill ?? post?.billId ?? post?.bill_id ?? "");
+
+  return {
+    ...options,
+    id,
+    idx: id,
+    title: post?.title || "제목 없는 포스트",
+    content: post?.content || "",
+    billId,
+    billTitle: post?.billTitle || post?.bill_title || "",
+    userIdx: Number(post?.userIdx ?? post?.user_id ?? 0),
+    nickname: post?.nickname || "익명",
+    createdAt: post?.createdAt || post?.created_at || "",
+    updatedAt: post?.updatedAt || post?.updated_at || "",
+    viewCount: Number(post?.viewCount ?? post?.view_count ?? 0),
+    commentCount: Number(post?.commentCount ?? post?.comment_count ?? 0),
+  };
+}
+
+export function normalizeComment(comment, options = {}) {
+  const id = Number(comment?.idx ?? comment?.id ?? 0);
+  const replies = Array.isArray(comment?.replies)
+    ? comment.replies.map((reply) => normalizeComment(reply))
+    : [];
+
+  return {
+    ...options,
+    id,
+    idx: id,
+    postIdx: Number(comment?.postIdx ?? comment?.post_id ?? 0),
+    postTitle: comment?.postTitle || comment?.post_title || "",
+    postBillId: String(comment?.postBillId ?? comment?.post_bill_id ?? ""),
+    billTitle: comment?.billTitle || comment?.bill_title || "",
+    parent: comment?.parent ?? comment?.parent_id ?? null,
+    userIdx: Number(comment?.userIdx ?? comment?.user_id ?? 0),
+    nickname: comment?.nickname || "익명",
+    content: comment?.content || "",
+    createdAt: comment?.createdAt || comment?.created_at || "",
+    updatedAt: comment?.updatedAt || comment?.updated_at || "",
+    viewCount: Number(comment?.viewCount ?? comment?.view_count ?? 0),
+    isDeleted: Boolean(comment?.isDeleted ?? comment?.is_deleted ?? false),
+    replies,
+  };
+}
+
 export const lawApi = {
   getCategories() {
     return request("/api/categories");
@@ -208,6 +255,53 @@ export const lawApi = {
   },
 };
 
+export const postApi = {
+  getPosts(params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return request(`/api/posts${query ? `?${query}` : ""}`);
+  },
+  getPost(idx) {
+    return request(`/api/posts/${idx}`);
+  },
+  createPost(post) {
+    return request("/api/posts", {
+      method: "POST",
+      body: JSON.stringify(post),
+    });
+  },
+  updatePost(idx, changes) {
+    return request(`/api/posts/${idx}`, {
+      method: "PATCH",
+      body: JSON.stringify(changes),
+    });
+  },
+  deletePost(idx) {
+    return request(`/api/posts/${idx}`, { method: "DELETE" });
+  },
+  getComments(postIdx) {
+    return request(`/api/posts/${postIdx}/comments`);
+  },
+  getUserComments(userIdx, params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return request(`/api/users/${userIdx}/comments${query ? `?${query}` : ""}`);
+  },
+  createComment(postIdx, comment) {
+    return request(`/api/posts/${postIdx}/comments`, {
+      method: "POST",
+      body: JSON.stringify(comment),
+    });
+  },
+  updateComment(idx, changes) {
+    return request(`/api/comments/${idx}`, {
+      method: "PATCH",
+      body: JSON.stringify(changes),
+    });
+  },
+  deleteComment(idx) {
+    return request(`/api/comments/${idx}`, { method: "DELETE" });
+  },
+};
+
 export const authApi = {
   getCsrfToken() {
     return request("/api/auth/csrf");
@@ -223,6 +317,9 @@ export const authApi = {
   },
   getCurrentAccount() {
     return request("/api/auth/me");
+  },
+  getAccount(idx) {
+    return request(`/api/users/${idx}`);
   },
   signup(account) {
     return request("/api/accounts", {

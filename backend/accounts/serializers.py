@@ -54,3 +54,9 @@ class AccountSerializer(serializers.ModelSerializer):
             instance.set_password(raw_password)
         instance.save()
         return instance
+
+
+class PublicAccountSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Account
+        fields = ["idx", "nickname"]

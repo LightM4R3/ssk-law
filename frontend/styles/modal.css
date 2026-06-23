@@ -56,3 +56,57 @@
   .btn-primary:hover { background: #000; }
   .btn-ghost { background: var(--surface-2); color: var(--ink-2); }
   .btn-ghost:hover { background: var(--line); color: var(--ink); }
+  .btn-blue {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 12px 24px rgba(20,20,25,.14);
+  }
+  .btn-blue:hover {
+    background: var(--accent-ink);
+  }
+
+  .bill-post-preview-section {
+    border-top: 1px solid var(--line);
+    padding-top: 22px;
+  }
+  .bill-post-preview-list {
+    display: grid;
+    gap: 8px;
+  }
+  .bill-post-preview,
+  .bill-post-preview-state {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: var(--r-sm);
+    background: var(--bg);
+    padding: 13px 15px;
+  }
+  .bill-post-preview {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    text-align: left;
+    transition: background .18s var(--ease-suk), border-color .18s var(--ease-suk), transform .18s var(--ease-suk);
+  }
+  .bill-post-preview:hover {
+    background: var(--surface-2);
+    border-color: var(--line-strong);
+    transform: translateX(3px);
+  }
+  .bill-post-preview strong {
+    display: block;
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.35;
+    margin-bottom: 4px;
+  }
+  .bill-post-preview span,
+  .bill-post-preview-state {
+    color: var(--ink-3);
+    font-size: 12.5px;
+  }
+  .bill-post-preview svg {
+    color: var(--ink-4);
+    flex: 0 0 auto;
+  }
