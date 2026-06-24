@@ -34,6 +34,8 @@ class Bill(models.Model):
     proposer = models.CharField(max_length=200)
     committee = models.CharField(max_length=100, blank=True, default="")
     stage = models.CharField(max_length=20, choices=STAGE_CHOICES, default="proposed")
+    result_status = models.CharField(max_length=40, default="pending")
+    result_text = models.CharField(max_length=100, blank=True, default="")
     proposed_at = models.DateField()
     detail_link = models.URLField(max_length=500, blank=True, default="")
     age = models.IntegerField(default=22, help_text="국회 대수")
@@ -51,6 +53,7 @@ class Bill(models.Model):
         indexes = [
             models.Index(fields=["-proposed_at"], name="idx_bill_proposed_at"),
             models.Index(fields=["stage"], name="idx_bill_stage"),
+            models.Index(fields=["result_status"], name="idx_bill_result_status"),
             models.Index(fields=["age"], name="idx_bill_age"),
         ]
 

@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.middleware.csrf import get_token
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_protect, ensure_csrf_cookie
@@ -9,6 +10,15 @@ from rest_framework.views import APIView
 from .authentication import AccountSessionAuthentication, SESSION_ACCOUNT_KEY
 from .models import Account
 from .serializers import AccountSerializer, PublicAccountSerializer
+
+
+def session_response_payload(request, account):
+    return {
+        "account": AccountSerializer(account).data,
+        "session": {
+            "expiresInSeconds": request.session.get_expiry_age(),
+        },
+    }
 
 
 @method_decorator(csrf_protect, name="dispatch")
@@ -90,8 +100,9 @@ class LoginView(APIView):
             )
 
         request.session.cycle_key()
+        request.session.set_expiry(settings.SESSION_COOKIE_AGE)
         request.session[SESSION_ACCOUNT_KEY] = account.idx
-        return Response({"account": AccountSerializer(account).data})
+        return Response(session_response_payload(request, account))
 
 
 class LogoutView(APIView):
@@ -107,4 +118,4 @@ class CurrentAccountView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        return Response({"account": AccountSerializer(request.user).data})
+        return Response(session_response_payload(request, request.user))

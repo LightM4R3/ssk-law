@@ -145,6 +145,8 @@ export const useAppStore = defineStore("app", {
       bills: null,
       weekly: null,
     },
+    categoryBillLoading: {},
+    categoryBillErrors: {},
     categories: [],
     totalTrackedCount: 0,
     bills: [],
@@ -277,6 +279,8 @@ export const useAppStore = defineStore("app", {
       this.picks = [];
       this.weekly = [];
       this.billDetails = {};
+      this.categoryBillLoading = {};
+      this.categoryBillErrors = {};
 
       const [categoriesResult, picksResult, billsResult, popularResult] = await Promise.allSettled([
         lawApi.getCategories(),
@@ -347,6 +351,43 @@ export const useAppStore = defineStore("app", {
         });
       } catch (error) {
         this.apiError = getApiErrorState(error).message;
+      }
+    },
+    async loadCategoryBills(categoryId) {
+      if (!categoryId || this.categoryBillLoading[categoryId]) return;
+
+      const category = this.categories.find((item) => item.id === categoryId);
+      const alreadyLoaded = this.bills.filter((bill) => bill.cats?.some((cat) => cat.k === categoryId)).length;
+      if (category?.count && alreadyLoaded >= category.count) {
+        this.categoryBillErrors[categoryId] = null;
+        return;
+      }
+
+      this.categoryBillLoading[categoryId] = true;
+      this.categoryBillErrors[categoryId] = null;
+      try {
+        let page = 1;
+        let totalPages = 1;
+        const loaded = [];
+        do {
+          const payload = await lawApi.getBills({
+            category: categoryId,
+            sort: "-proposed_at",
+            page,
+            page_size: 100,
+          });
+          const incoming = extractArray(payload, "bills")
+            .map((bill, index) => withBillPresentation(normalizeApiBill(bill), this.bills.length + loaded.length + index));
+          loaded.push(...incoming);
+          totalPages = Number(payload?.pagination?.total_pages || page);
+          page += 1;
+        } while (page <= totalPages);
+
+        this.bills = uniqueBills([...this.bills, ...loaded]);
+      } catch (error) {
+        this.categoryBillErrors[categoryId] = getApiErrorState(error, "분야별 법안을 슥 가져오지 못하고 있어요");
+      } finally {
+        this.categoryBillLoading[categoryId] = false;
       }
     },
     async searchBills(query) {

@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient, APITestCase
@@ -166,11 +167,17 @@ class AccountApiTests(APITestCase):
 
         self.assertEqual(login_response.status_code, status.HTTP_200_OK)
         self.assertEqual(login_response.data["account"]["idx"], created["idx"])
+        self.assertEqual(login_response.data["session"]["expiresInSeconds"], settings.SESSION_COOKIE_AGE)
         self.assertNotIn("password", login_response.data["account"])
         self.assertEqual(me_response.status_code, status.HTTP_200_OK)
         self.assertEqual(me_response.data["account"]["id"], "tester")
+        self.assertEqual(me_response.data["session"]["expiresInSeconds"], settings.SESSION_COOKIE_AGE)
         self.assertEqual(logout_response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertEqual(after_logout.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_session_policy_is_one_hour_and_refreshes_on_requests(self):
+        self.assertEqual(settings.SESSION_COOKIE_AGE, 60 * 60)
+        self.assertTrue(settings.SESSION_SAVE_EVERY_REQUEST)
 
     def test_login_identifies_invalid_password(self):
         self.create_account()

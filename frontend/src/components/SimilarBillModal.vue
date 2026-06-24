@@ -26,6 +26,20 @@ const stageKey = computed(() => store.stageKeyFromLabel(props.similar.stage));
 const stage = computed(() => store.stageMeta(stageKey.value));
 const parentStage = computed(() => store.stageMeta(props.parent.stage));
 const parentSummary = computed(() => Array.isArray(props.parent.summary) ? props.parent.summary[0] : props.parent.summaryText);
+const lastStageIndex = stageOrder.length - 1;
+const stageProgress = computed(() => `${(stage.value.idx / lastStageIndex) * 100}%`);
+const stagePoints = computed(() => stageOrder.map((step, index) => {
+  const meta = store.stageMeta(step);
+  return {
+    step,
+    label: store.stageLabel(step),
+    left: `${(index / lastStageIndex) * 100}%`,
+    active: meta.idx === stage.value.idx,
+    done: meta.idx < stage.value.idx,
+    first: index === 0,
+    last: index === lastStageIndex,
+  };
+}));
 
 function closeOnEscape(event) {
   if (event.key === "Escape") {
@@ -80,21 +94,27 @@ onUnmounted(() => document.removeEventListener("keydown", closeOnEscape));
             <div>현재 단계 · <span>{{ stage.label }}</span></div>
             <div>발의일 {{ similar.date }}</div>
           </div>
-          <div class="stage-track">
-            <div
-              v-for="step in stageOrder"
-              :key="step"
-              class="stage-step"
-              :class="{ done: store.stageMeta(step).idx < stage.idx, active: store.stageMeta(step).idx === stage.idx }"
-            ></div>
+          <div class="stage-track" :style="{ '--stage-progress': stageProgress }">
+            <span class="stage-line"></span>
+            <span class="stage-fill"></span>
+            <span
+              v-for="point in stagePoints"
+              :key="point.step"
+              class="stage-node"
+              :class="{ done: point.done, active: point.active }"
+              :style="{ left: point.left }"
+              aria-hidden="true"
+            ></span>
           </div>
           <div class="stage-labels">
             <span
-              v-for="step in stageOrder"
-              :key="step"
-              :class="{ active: store.stageMeta(step).idx === stage.idx }"
+              v-for="point in stagePoints"
+              :key="point.step"
+              class="stage-label"
+              :class="{ active: point.active, first: point.first, last: point.last }"
+              :style="{ left: point.left }"
             >
-              {{ store.stageLabel(step) }}
+              {{ point.label }}
             </span>
           </div>
         </div>

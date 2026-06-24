@@ -23,7 +23,6 @@ const summary = computed(() => {
     if (summaryText) return summaryText;
   }
   if (props.bill.summary && !Array.isArray(props.bill.summary)) return String(props.bill.summary);
-  if (props.bill.impact) return props.bill.impact;
   return "요약 준비 중입니다.";
 });
 </script>

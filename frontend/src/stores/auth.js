@@ -20,19 +20,33 @@ export const useAuthStore = defineStore("auth", {
       await authApi.getCsrfToken();
     },
 
-    async loadCurrentAccount() {
-      this.loading = true;
+    async loadCurrentAccount(options = {}) {
+      const silent = Boolean(options.silent);
+      if (!silent) this.loading = true;
       this.error = null;
       try {
         const payload = await authApi.getCurrentAccount();
         this.account = payload.account;
+        return payload;
       } catch (error) {
         if (error.status !== 401) this.error = error;
         this.account = null;
+        return null;
       } finally {
-        this.loading = false;
+        if (!silent) this.loading = false;
         this.initialized = true;
       }
+    },
+
+    async refreshSession() {
+      if (!this.account) return null;
+      return this.loadCurrentAccount({ silent: true });
+    },
+
+    expireSession() {
+      this.account = null;
+      this.initialized = true;
+      this.loading = false;
     },
 
     async login(id, password) {

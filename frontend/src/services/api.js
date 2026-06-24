@@ -1,4 +1,12 @@
 const API_BASE = (import.meta.env.VITE_SSK_API_BASE || "").replace(/\/$/, "");
+export const AUTH_EXPIRED_EVENT = "ssk-law:auth-expired";
+
+function shouldNotifyAuthExpired(path, method) {
+  if (["GET", "HEAD", "OPTIONS", "TRACE"].includes(method)) return false;
+  if (path.startsWith("/api/auth/login")) return false;
+  if (path.startsWith("/api/auth/csrf")) return false;
+  return true;
+}
 
 function getCookie(name) {
   const prefix = `${encodeURIComponent(name)}=`;
@@ -10,6 +18,7 @@ function getCookie(name) {
 }
 
 async function request(path, options = {}) {
+  const { suppressAuthExpired = false, ...fetchOptions } = options;
   const method = String(options.method || "GET").toUpperCase();
   const headers = new Headers(options.headers || {});
 
@@ -23,7 +32,7 @@ async function request(path, options = {}) {
   }
 
   const response = await fetch(`${API_BASE}${path}`, {
-    ...options,
+    ...fetchOptions,
     method,
     headers,
     credentials: "include",
@@ -40,6 +49,17 @@ async function request(path, options = {}) {
     error.status = response.status;
     error.code = serverError?.code || null;
     error.payload = payload;
+
+    if (
+      response.status === 401
+      && !suppressAuthExpired
+      && shouldNotifyAuthExpired(path, method)
+    ) {
+      window.dispatchEvent(new CustomEvent(AUTH_EXPIRED_EVENT, {
+        detail: { path, method },
+      }));
+    }
+
     throw error;
   }
 
@@ -163,8 +183,12 @@ export function normalizeBill(bill, options = {}) {
     proposer: bill?.proposer || "",
     committee: bill?.committee || "",
     stage: normalizeStage(bill?.stage),
+    resultStatus: bill?.resultStatus || bill?.result_status || "pending",
+    resultText: bill?.resultText || bill?.result_text || "",
     summary,
     summaryText: summary.join(" "),
+    description: bill?.description || bill?.billDescription || bill?.bill_description || bill?.content || "",
+    content: bill?.content || "",
     comments,
     viewCount: Number(bill?.viewCount ?? bill?.view_count ?? comments),
     impact: bill?.impact || "",
@@ -315,8 +339,11 @@ export const authApi = {
   logout() {
     return request("/api/auth/logout", { method: "POST" });
   },
-  getCurrentAccount() {
-    return request("/api/auth/me");
+  getCurrentAccount(options = {}) {
+    return request("/api/auth/me", {
+      suppressAuthExpired: true,
+      ...options,
+    });
   },
   getAccount(idx) {
     return request(`/api/users/${idx}`);

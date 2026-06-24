@@ -10,9 +10,6 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
-PLAIN_DISCLAIMER = "※ 이 설명은 참고용이며 법률 자문을 대신하지 않습니다."
-
-
 def _call_ollama(
     prompt: str,
     system: str = "",
@@ -180,34 +177,35 @@ def chat_reply(message: str, context: str, history: str = "") -> str | None:
 
 def explain_search(query: str, context: str) -> str | None:
     """Generate a short plain-text explanation after DB search results are ready."""
-    # system = (
-    #     "당신은 국회 발의안을 일반 시민에게 짧고 정확하게 설명하는 슥법 검색 도우미입니다. "
-    #     "반드시 제공된 법안 정보만 사용하세요. "
-    #     "Markdown, 특수 강조, 제목, 목록, 이모지, 인사말, 질문 반복, 면책 문구를 사용하지 마세요. "
-    #     "관련성이 높은 이유와 법안 핵심만 일반 텍스트 2~3문장, 250자 이내로 작성하세요. "
-    #     "확정적인 법률 자문처럼 말하지 마세요."
-    # )
     system = (
-        "너는 국회 법안 검색 결과를 간결하게 설명하는 안내자다."
-        "제공된 법안 데이터만 근거로 답변하라."
-
-        "규칙:"
-        "- 직접 관련 법안과 간접 관련 법안을 구분한다."
-        "- 직접 관련 법안이 없으면 그 사실을 명확히 밝힌다."
-        "- 간접 관련 법안은 관련된 이유를 한 문장으로 설명한다."
-        "- 관련성이 낮은 법안은 언급하지 않는다."
-        "- 법안에 없는 내용을 추측하거나 만들어내지 않는다."
-        "- 마크다운, 목록, 이모지, 인사말을 사용하지 않는다."
-        "- 최대 3문장, 250자 이내의 일반 텍스트로 작성한다."
+        "너는 국회 법안 DB 검색 결과를 시민에게 간결하게 설명하는 안내자다. "
+        "반드시 제공된 법안 데이터만 근거로 답변하고, 데이터에 없는 내용은 추측하지 않는다. "
+        "답변 첫머리에는 현재 DB 기준이라는 점을 짧게 밝혀라. "
+        "직접 관련 법안이 있으면 핵심 공통점을 말하고, 직접 관련 법안이 없으면 없다고 말한다. "
+        "간접 관련 법안만 있으면 어떤 점에서 간접적인지 한 문장으로 설명한다. "
+        "법률 자문, 면책 문구, 참고용이라는 문장, 마크다운, 목록, 이모지, 인사말을 사용하지 않는다. "
+        "2~3개의 짧은 문장으로 작성하고, 각 문장은 줄바꿈으로 구분한다. "
+        "최대 420자 이내의 일반 텍스트로 작성한다."
     )
     prompt = f"사용자 검색어: {query}\n\n검색된 법안:\n{context}"
     text = _call_ollama(
         prompt,
         system,
         model=settings.OLLAMA_REALTIME_MODEL,
-        options={"temperature": 0.1, "num_predict": 160},
+        options={"temperature": 0.1, "num_predict": 260},
     )
-    return clean_plain_text(text, max_chars=320) if text else None
+    return format_search_explanation(clean_plain_text(text, max_chars=520)) if text else None
+
+
+def format_search_explanation(text: str) -> str:
+    """Make search explanations readable without relying on markdown."""
+    value = str(text or "").strip()
+    if not value:
+        return value
+    value = re.sub(r"\s+", " ", value)
+    value = re.sub(r"(다\.|요\.)\s+", r"\1\n", value)
+    lines = [line.strip() for line in value.splitlines() if line.strip()]
+    return "\n".join(lines[:3])
 
 
 def clean_plain_text(text: str, max_chars: int = 600) -> str:
@@ -218,7 +216,11 @@ def clean_plain_text(text: str, max_chars: int = 600) -> str:
     value = re.sub(r"(?m)^\s{0,3}(?:#{1,6}|[-*+]\s+|\d+[.)]\s+)", "", value)
     value = value.replace("**", "").replace("__", "").replace("`", "")
     value = re.sub(r"(?m)^\s*---+\s*$", "", value)
-    value = re.split(r"(?:면책\s*조항|본 답변은 참고용)", value, maxsplit=1)[0]
+    value = re.split(
+        r"(?:면책\s*조항|본 답변은 참고용|이\s*설명은\s*참고용|법률\s*자문을\s*대신)",
+        value,
+        maxsplit=1,
+    )[0]
     value = "".join(
         char
         for char in value

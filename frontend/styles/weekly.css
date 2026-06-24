@@ -8,7 +8,7 @@
     border-radius: var(--r-md);
     padding: 22px 28px;
     display: grid;
-    grid-template-columns: 80px 1fr auto auto;
+    grid-template-columns: 80px 1fr auto;
     align-items: center;
     gap: 24px;
     cursor: pointer;
@@ -36,10 +36,10 @@
   }
   .weekly-row:hover::before { transform: scaleY(1); }
   .weekly-rank {
-    font-family: ui-monospace, "SF Mono", Menlo, monospace;
-    font-size: 40px; font-weight: 800; color: var(--ink-4);
+    font-family: "Noto Sans KR", "Noto Sans", var(--font-main);
+    font-size: 40px; font-weight: 900; color: var(--ink-4);
     font-variant-numeric: tabular-nums;
-    line-height: 1; letter-spacing: -0.04em;
+    line-height: 1; letter-spacing: -0.055em;
     transition: color .3s;
   }
   .weekly-row:hover .weekly-rank { color: var(--accent); }
@@ -58,5 +58,3 @@
   .weekly-views { font-size: 16px; font-weight: 700; color: var(--ink); }
   .weekly-trend { font-weight: 700; color: oklch(0.45 0.1 155); font-size: 13px; font-variant-numeric: tabular-nums; }
   .weekly-trend.down { color: oklch(0.55 0.13 25); }
-  .weekly-go { color: var(--ink-3); transition: transform .3s var(--ease-suk), color .3s; }
-  .weekly-row:hover .weekly-go { color: var(--accent); transform: translateX(6px); }

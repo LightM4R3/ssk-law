@@ -1,7 +1,8 @@
 from django.conf import settings
 from django.db import transaction
+from django.utils.module_loading import import_string
 
-from bills.models import BillCategory, BillSummary, Category
+from bills.models import Bill, BillCategory, BillSummary, Category, SimilarBill
 from bills.services.assembly import AssemblyAPIClient
 from bills.services.processing import BillProcessor
 from services import ollama
@@ -74,3 +75,67 @@ class SummaryProcessor(BillProcessor):
             raise ValueError("AI response must contain one or two valid categories")
         return summary, categories
 
+
+class SimilarityProcessor(BillProcessor):
+    """Optional add-on processor for teammate-owned similarity logic.
+
+    Enable it by adding this class to BILL_PROCESSORS and pointing
+    BILL_SIMILARITY_PROVIDER at a callable that accepts a Bill and returns
+    a list of Bill objects or dictionaries with title/date/stage fields.
+    """
+
+    key = "similarity"
+    version = "v1"
+    dependencies = ("summary",)
+
+    def __init__(self, provider=None):
+        self.provider = provider
+
+    def process(self, bill):
+        provider = self.provider or self._load_provider()
+        matches = provider(bill)
+        if matches is None:
+            matches = []
+        if not isinstance(matches, list):
+            raise ValueError("Similarity provider must return a list")
+
+        similar = []
+        for item in matches[:10]:
+            normalized = self._normalize_match(bill, item)
+            if normalized:
+                similar.append(SimilarBill(source_bill=bill, **normalized))
+
+        with transaction.atomic():
+            SimilarBill.objects.filter(source_bill=bill).delete()
+            if similar:
+                SimilarBill.objects.bulk_create(similar)
+
+    @staticmethod
+    def _load_provider():
+        provider_path = getattr(settings, "BILL_SIMILARITY_PROVIDER", "")
+        if not provider_path:
+            raise RuntimeError("BILL_SIMILARITY_PROVIDER is not configured")
+        return import_string(provider_path)
+
+    @staticmethod
+    def _normalize_match(source_bill, item):
+        if isinstance(item, Bill):
+            if item.pk == source_bill.pk:
+                return None
+            return {
+                "title": item.title,
+                "date": item.proposed_at.strftime("%Y.%m.%d") if item.proposed_at else "",
+                "stage_label": item.get_stage_display(),
+            }
+
+        if not isinstance(item, dict):
+            raise ValueError("Similarity provider items must be Bill instances or dictionaries")
+
+        title = str(item.get("title") or item.get("bill_title") or "").strip()
+        if not title:
+            return None
+        return {
+            "title": title[:500],
+            "date": str(item.get("date") or item.get("proposed_at") or "")[:20],
+            "stage_label": str(item.get("stage") or item.get("stage_label") or "")[:30],
+        }

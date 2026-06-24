@@ -36,6 +36,8 @@ class BillListSerializer(serializers.Serializer):
     proposedAt = serializers.SerializerMethodField()
     proposer = serializers.CharField()
     stage = serializers.CharField()
+    resultStatus = serializers.CharField(source="result_status")
+    resultText = serializers.CharField(source="result_text")
     summary = serializers.SerializerMethodField()
     sentiment = serializers.SerializerMethodField()
     comments = serializers.IntegerField(source="view_count")  # view_count doubles as comments for MVP

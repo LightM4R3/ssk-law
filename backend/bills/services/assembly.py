@@ -24,6 +24,47 @@ CATEGORY_SEED = [
 
 STAGE_ORDER = {"proposed": 1, "committee": 2, "plenary": 3, "passed": 4}
 
+RESULT_STATUS_MAP = {
+    "원안가결": "original_passed",
+    "수정가결": "modified_passed",
+    "대안가결": "alternative_passed",
+    "위원회안가결": "committee_bill_passed",
+    "번안가결": "reconsidered_passed",
+    "가결": "passed",
+    "대안반영폐기": "alternative_discarded",
+    "수정안반영폐기": "amended_alternative_discarded",
+    "철회": "withdrawn",
+    "폐기": "discarded",
+    "부결": "rejected",
+    "회송": "returned",
+    "심사미료": "unfinished",
+    "발의": "pending",
+    "계류의안": "pending",
+    "처리의안": "processed",
+}
+PRIMARY_PASS_RESULTS = {"원안가결", "수정가결", "가결"}
+PRIMARY_CLOSED_RESULTS = {"철회", "폐기", "부결", "대안반영폐기", "수정안반영폐기"}
+RESULT_FIELDS_BY_PRIORITY = (
+    "PROC_RESULT_CD",
+    "PROC_RESULT",
+    "LAW_PROC_RESULT_CD",
+    "CMT_PROC_RESULT_CD",
+    "PASS_GUBUN",
+)
+STAGE_SIGNAL_FIELDS = (
+    "COMMITTEE_DT",
+    "CMT_PRESENT_DT",
+    "CMT_PROC_DT",
+    "CMT_PROC_RESULT_CD",
+    "LAW_SUBMIT_DT",
+    "LAW_PRESENT_DT",
+    "LAW_PROC_DT",
+    "LAW_PROC_RESULT_CD",
+    "PROC_DT",
+    "ANNOUNCE_DT",
+    "PROM_DT",
+)
+
 
 class AssemblyAPIError(RuntimeError):
     pass
@@ -255,8 +296,8 @@ class BillSyncService:
             return
         counters.fetched += len(rows)
         for raw in rows:
-            if raw.get("LAW_PROC_DT") or raw.get("LAW_PROC_RESULT_CD"):
-                self._handle_row(raw, counters, lambda item: self._upsert_stage_bill(item, "plenary"))
+            if has_stage_signal(raw):
+                self._handle_row(raw, counters, self._upsert_stage_bill)
 
     def _sync_plenary(self, counters):
         try:
@@ -267,9 +308,8 @@ class BillSyncService:
             return
         counters.fetched += len(rows)
         for raw in rows:
-            result = raw.get("PROC_RESULT_CD") or ""
-            if "가결" in result:
-                self._handle_row(raw, counters, lambda item: self._upsert_stage_bill(item, "passed"))
+            if has_stage_signal(raw):
+                self._handle_row(raw, counters, self._upsert_stage_bill)
 
     @staticmethod
     def _handle_row(raw, counters, handler):
@@ -293,41 +333,34 @@ class BillSyncService:
             "title": raw.get("BILL_NAME") or "제목 없음",
             "proposer": raw.get("PROPOSER") or "발의자 정보 없음",
             "committee": raw.get("COMMITTEE") or raw.get("COMMITTEE_NAME") or "미정",
-            "stage": normalize_stage(raw.get("PROC_RESULT") or "발의"),
             "proposed_at": parse_date(raw.get("PROPOSE_DT")),
             "detail_link": raw.get("DETAIL_LINK") or "",
             "age": 22,
+            **infer_bill_state(raw),
         }
         bill = Bill.objects.filter(bill_id=bill_no).first() or Bill.objects.filter(
             bill_no=bill_no
         ).first()
         return self._save_bill(bill, bill_no, data)
 
-    def _upsert_stage_bill(self, raw, target_stage):
+    def _upsert_stage_bill(self, raw):
         bill_no = raw.get("BILL_NO")
         if not bill_no:
             raise ValueError("BILL_NO is missing")
         bill = Bill.objects.filter(bill_no=bill_no).first()
-        if bill:
-            if STAGE_ORDER[target_stage] <= STAGE_ORDER.get(bill.stage, 1):
-                return False, False
-            bill.stage = target_stage
-            bill.synced_at = timezone.now()
-            bill.save(update_fields=["stage", "synced_at", "updated_at"])
-            return False, True
 
-        raw_title = raw.get("BILL_NAME") or raw.get("BILL_NM") or "제목 없음"
+        raw_title = raw.get("BILL_NAME") or raw.get("BILL_NM")
         data = {
             "bill_no": bill_no,
-            "title": raw_title.split("(")[0].strip(),
-            "proposer": raw.get("PROPOSER") or "발의자 정보 없음",
-            "committee": raw.get("CURR_COMMITTEE") or raw.get("COMMITTEE_NM") or "미정",
-            "stage": target_stage,
-            "proposed_at": parse_date(raw.get("PROPOSE_DT")),
-            "detail_link": raw.get("LINK_URL") or "",
+            "title": raw_title.split("(")[0].strip() if raw_title else (bill.title if bill else "제목 없음"),
+            "proposer": raw.get("PROPOSER") or (bill.proposer if bill else "발의자 정보 없음"),
+            "committee": raw.get("CURR_COMMITTEE") or raw.get("COMMITTEE_NM") or (bill.committee if bill else "미정"),
+            "proposed_at": parse_date(raw.get("PROPOSE_DT")) if raw.get("PROPOSE_DT") else (bill.proposed_at if bill else timezone.localdate()),
+            "detail_link": raw.get("LINK_URL") or (bill.detail_link if bill else ""),
             "age": 22,
+            **infer_bill_state(raw),
         }
-        return self._save_bill(None, raw.get("BILL_ID") or bill_no, data)
+        return self._save_bill(bill, raw.get("BILL_ID") or bill_no, data)
 
     def _save_bill(self, bill, bill_id, data):
         if bill is None:
@@ -345,6 +378,9 @@ class BillSyncService:
 
         if STAGE_ORDER.get(data["stage"], 1) < STAGE_ORDER.get(bill.stage, 1):
             data["stage"] = bill.stage
+        if data["result_status"] == "pending" and bill.result_status != "pending":
+            data["result_status"] = bill.result_status
+            data["result_text"] = bill.result_text
         changed = any(getattr(bill, key) != value for key, value in data.items())
         for key, value in data.items():
             setattr(bill, key, value)
@@ -373,6 +409,85 @@ def normalize_stage(value):
     if "위원회" in text or "심사" in text:
         return "committee"
     return "proposed"
+
+
+def has_stage_signal(raw):
+    if any(raw.get(field) for field in STAGE_SIGNAL_FIELDS):
+        return True
+    return any(
+        normalize_result_text(raw.get(field))
+        for field in RESULT_FIELDS_BY_PRIORITY
+        if field != "PASS_GUBUN"
+    )
+
+
+def infer_bill_state(raw):
+    result_text = infer_result_text(raw)
+    stage = infer_stage_from_row(raw)
+    return {
+        "stage": stage,
+        "result_status": result_status_from_text(result_text),
+        "result_text": result_text,
+    }
+
+
+def infer_stage_from_row(raw):
+    primary_result = first_result_text(raw, ("PROC_RESULT_CD", "PROC_RESULT"))
+
+    if raw.get("ANNOUNCE_DT") or raw.get("PROM_DT"):
+        return "passed"
+    if primary_result in PRIMARY_PASS_RESULTS:
+        return "passed"
+
+    if raw.get("LAW_PRESENT_DT") or raw.get("LAW_PROC_DT") or raw.get("LAW_SUBMIT_DT"):
+        return "plenary"
+    if raw.get("LAW_PROC_RESULT_CD"):
+        return "plenary"
+
+    if (
+        raw.get("COMMITTEE_DT")
+        or raw.get("CMT_PRESENT_DT")
+        or raw.get("CMT_PROC_DT")
+        or raw.get("CMT_PROC_RESULT_CD")
+        or raw.get("CURR_COMMITTEE")
+        or raw.get("COMMITTEE")
+        or "위원회" in normalize_result_text(raw.get("PROC_RESULT"))
+        or "심사" in normalize_result_text(raw.get("PROC_RESULT"))
+    ):
+        return "committee"
+
+    if primary_result in PRIMARY_CLOSED_RESULTS:
+        return "proposed"
+    return "proposed"
+
+
+def infer_result_text(raw):
+    return first_result_text(raw, RESULT_FIELDS_BY_PRIORITY)
+
+
+def first_result_text(raw, fields):
+    for field in fields:
+        result = normalize_result_text(raw.get(field))
+        if result:
+            return result
+    return ""
+
+
+def normalize_result_text(value):
+    return str(value or "").strip()
+
+
+def result_status_from_text(value):
+    text = normalize_result_text(value)
+    if not text:
+        return "pending"
+    if text in RESULT_STATUS_MAP:
+        return RESULT_STATUS_MAP[text]
+    if "가결" in text:
+        return "passed"
+    if "폐기" in text:
+        return "discarded"
+    return "processed"
 
 
 def parse_date(value):

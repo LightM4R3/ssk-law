@@ -25,8 +25,29 @@ const startX = ref(0);
 const dragX = ref(0);
 const wasDrag = ref(false);
 const stageOrder = ["proposed", "committee", "plenary", "passed"];
+const lastStageIndex = stageOrder.length - 1;
 
 const transform = computed(() => `translateX(${(-index.value * width.value) + dragX.value}px)`);
+
+function stageProgress(stageKey) {
+  const stage = store.stageMeta(stageKey);
+  return `${(stage.idx / lastStageIndex) * 100}%`;
+}
+
+function stagePoints(stageKey) {
+  const current = store.stageMeta(stageKey);
+  return stageOrder.map((step, stepIndex) => {
+    const meta = store.stageMeta(step);
+    return {
+      key: step,
+      label: store.stageLabel(step),
+      left: `${(stepIndex / lastStageIndex) * 100}%`,
+      active: meta.idx === current.idx,
+      done: meta.idx < current.idx,
+      edge: stepIndex === 0 ? "first" : stepIndex === lastStageIndex ? "last" : "",
+    };
+  });
+}
 
 function measure() {
   width.value = viewport.value?.getBoundingClientRect().width || 0;
@@ -174,21 +195,26 @@ onUnmounted(() => {
             <div class="pick-foot">
               <div class="stage-block">
                 <h4>입법 단계</h4>
-                <div class="stage-track">
-                  <div
-                    v-for="step in stageOrder"
-                    :key="step"
-                    class="stage-step"
-                    :class="{ done: store.stageMeta(step).idx < store.stageMeta(pick.stage).idx, active: store.stageMeta(step).idx === store.stageMeta(pick.stage).idx }"
-                  ></div>
-                </div>
-                <div class="stage-labels">
+                <div class="pick-stage-track" :style="{ '--stage-progress': stageProgress(pick.stage) }">
+                  <span class="pick-stage-line"></span>
+                  <span class="pick-stage-fill"></span>
                   <span
-                    v-for="step in stageOrder"
-                    :key="step"
-                    :class="{ active: store.stageMeta(step).idx === store.stageMeta(pick.stage).idx }"
+                    v-for="point in stagePoints(pick.stage)"
+                    :key="point.key"
+                    class="pick-stage-node"
+                    :class="{ done: point.done, active: point.active }"
+                    :style="{ left: point.left }"
+                  ></span>
+                </div>
+                <div class="pick-stage-labels">
+                  <span
+                    v-for="point in stagePoints(pick.stage)"
+                    :key="point.key"
+                    class="pick-stage-label"
+                    :class="[point.edge, { active: point.active }]"
+                    :style="{ left: point.left }"
                   >
-                    {{ store.stageLabel(step) }}
+                    {{ point.label }}
                   </span>
                 </div>
               </div>

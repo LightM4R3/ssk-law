@@ -81,9 +81,6 @@ watch(query, (value) => {
           <span v-if="['High', 'Medium'].includes(store.searchSnapshot?.risk_level)" class="ai-badge">{{ store.searchSnapshot.risk_level }}</span>
         </div>
         <div class="ai-text">{{ store.searchIntro }}</div>
-        <div v-if="store.searchSnapshot?.keywords?.length" class="ai-keywords">
-          <span v-for="keyword in store.searchSnapshot.keywords" :key="keyword" class="ai-kw">{{ keyword }}</span>
-        </div>
       </div>
     </div>
 

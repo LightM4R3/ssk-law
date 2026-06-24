@@ -27,10 +27,25 @@ const billPostsError = ref(null);
 const activePost = ref(null);
 const stageOrder = ["proposed", "committee", "plenary", "passed"];
 const stage = computed(() => store.stageMeta(props.bill.stage));
+const lastStageIndex = stageOrder.length - 1;
+const stageProgress = computed(() => `${(stage.value.idx / lastStageIndex) * 100}%`);
+const stagePoints = computed(() => stageOrder.map((step, index) => {
+  const meta = store.stageMeta(step);
+  return {
+    step,
+    label: store.stageLabel(step),
+    left: `${(index / lastStageIndex) * 100}%`,
+    active: meta.idx === stage.value.idx,
+    done: meta.idx < stage.value.idx,
+    first: index === 0,
+    last: index === lastStageIndex,
+  };
+}));
+
 const summary = computed(() => {
   if (Array.isArray(props.bill.summary)) {
     const lines = props.bill.summary.filter(Boolean);
-    return lines.length ? lines : ["요약 준비 중입니다."];
+    if (lines.length) return lines;
   }
   const summaryText = props.bill.summaryText || props.bill.summary || props.bill.impact;
   return summaryText ? [String(summaryText)] : ["요약 준비 중입니다."];
@@ -189,21 +204,27 @@ onUnmounted(() => document.removeEventListener("keydown", closeOnEscape));
             <div>현재 단계 · <span>{{ stage.label }}</span></div>
             <div v-if="syncedDate">최근 업데이트 {{ syncedDate }}</div>
           </div>
-          <div class="stage-track">
-            <div
-              v-for="step in stageOrder"
-              :key="step"
-              class="stage-step"
-              :class="{ done: store.stageMeta(step).idx < stage.idx, active: store.stageMeta(step).idx === stage.idx }"
-            ></div>
+          <div class="stage-track" :style="{ '--stage-progress': stageProgress }">
+            <span class="stage-line"></span>
+            <span class="stage-fill"></span>
+            <span
+              v-for="point in stagePoints"
+              :key="point.step"
+              class="stage-node"
+              :class="{ done: point.done, active: point.active }"
+              :style="{ left: point.left }"
+              aria-hidden="true"
+            ></span>
           </div>
           <div class="stage-labels">
             <span
-              v-for="step in stageOrder"
-              :key="step"
-              :class="{ active: store.stageMeta(step).idx === stage.idx }"
+              v-for="point in stagePoints"
+              :key="point.step"
+              class="stage-label"
+              :class="{ active: point.active, first: point.first, last: point.last }"
+              :style="{ left: point.left }"
             >
-              {{ store.stageLabel(step) }}
+              {{ point.label }}
             </span>
           </div>
         </div>

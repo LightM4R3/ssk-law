@@ -84,7 +84,7 @@
   padding: 5px 11px; border-radius: var(--r-pill);
   background: rgba(255,255,255,.7); border: 1px solid rgba(0,0,0,.06);
 }
-.ai-text { font-size: 18px; line-height: 1.65; letter-spacing: -0.015em; color: var(--ink); font-weight: 500; text-wrap: pretty; }
+.ai-text { font-size: 18px; line-height: 1.72; letter-spacing: -0.015em; color: var(--ink); font-weight: 500; text-wrap: pretty; white-space: pre-line; max-width: 78ch; }
 .ai-text .blink { display: inline-block; width: 2px; height: 18px; background: var(--accent); margin-left: 2px; vertical-align: middle; animation: blink 1s steps(2) infinite; }
 @keyframes blink { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
 .ai-loading-dots {
@@ -94,18 +94,6 @@
 .ai-loading-dots span:nth-child(2) { animation-delay: .15s; }
 .ai-loading-dots span:nth-child(3) { animation-delay: .3s; }
 @keyframes dotBounce { 0%, 60%, 100% { transform: translateY(0); opacity: .4; } 30% { transform: translateY(-6px); opacity: 1; } }
-
-.ai-keywords { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
-.ai-kw {
-  font-size: 12.5px; font-weight: 600;
-  padding: 5px 11px; border-radius: var(--r-pill);
-  background: rgba(255,255,255,.75); border: 1px solid rgba(0,0,0,.06);
-  color: var(--ink-2); cursor: pointer;
-  transition: background .2s, color .2s, transform .15s var(--ease-suk);
-  animation: sukIn .4s var(--ease-suk) backwards;
-}
-.ai-kw:hover { background: var(--ink); color: #fff; transform: translateY(-1px); }
-.ai-kw::before { content: "#"; opacity: .5; margin-right: 2px; }
 
 /* ============ REFINE ROW ============ */
 .refine-row {

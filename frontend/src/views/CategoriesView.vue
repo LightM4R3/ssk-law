@@ -31,7 +31,6 @@ function topTitlesForCategory(categoryId, limit = 3) {
 const categoryCards = computed(() => store.categories.map((category, index) => ({
   ...category,
   delay: `${index * 60}ms`,
-  loadedCount: itemsInCategory(store.bills, category.id).length,
   previewTitles: topTitlesForCategory(category.id),
 })));
 const isLoadingCategories = computed(() => store.apiStatus === "loading" && !store.categories.length);
@@ -73,7 +72,7 @@ const isLoadingCategories = computed(() => store.apiStatus === "loading" && !sto
       >
         <div class="cat-card-top">
           <div class="cat-glyph">{{ cat.glyph }}</div>
-          <span class="cat-badge muted">집계 {{ cat.count }}건</span>
+          <span class="cat-badge muted">전체 법안 {{ cat.count }}건</span>
         </div>
 
         <h3 class="cat-name">
@@ -81,17 +80,6 @@ const isLoadingCategories = computed(() => store.apiStatus === "loading" && !sto
           <span class="sub">{{ cat.sub }}</span>
         </h3>
         <p class="cat-blurb">{{ cat.blurb }}</p>
-
-        <div class="cat-stats">
-          <div class="cat-stat">
-            <span class="cat-stat-num">{{ cat.count }}</span>
-            <span class="cat-stat-label">전체 추적 법안</span>
-          </div>
-          <div class="cat-stat">
-            <span class="cat-stat-num">{{ cat.loadedCount }}</span>
-            <span class="cat-stat-label">목록 표시 중</span>
-          </div>
-        </div>
 
         <div class="cat-preview">
           <div v-for="title in cat.previewTitles" :key="title" class="cat-preview-item">

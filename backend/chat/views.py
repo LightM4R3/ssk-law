@@ -12,7 +12,7 @@ from bills.models import Bill, BillSummary
 from .models import ChatMessage, ChatSession
 from .serializers import ChatMessageSerializer, ChatRequestSerializer
 from .masking import mask_personal_info
-from services.ollama import PLAIN_DISCLAIMER, analyze_user_query, chat_reply
+from services.ollama import analyze_user_query, chat_reply
 
 
 # ---------------------------------------------------------------------------
@@ -131,9 +131,6 @@ def chat_view(request):
             "그 사이에 최신 법안을 한번 둘러보는 건 어때요?"
         )
     
-    # Disclaimer 자동 삽입
-    reply_text = f"{reply_text}\n{PLAIN_DISCLAIMER}"
-
     # 9. DB 저장 전 마스킹 확인 및 최종 저장
     ChatMessage.objects.create(session=session, role="user", content=masked_message)
     

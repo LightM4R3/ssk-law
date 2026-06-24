@@ -21,8 +21,8 @@ from bills.services.assembly import (
     ensure_categories,
 )
 from bills.services.processing import BillProcessor, BillTaskWorker
-from bills.services.processors import SummaryProcessor
-from services.ollama import PLAIN_DISCLAIMER, clean_plain_text
+from bills.services.processors import SimilarityProcessor, SummaryProcessor
+from services.ollama import clean_plain_text, format_search_explanation
 
 
 def bill_row(bill_no="TEST-001", title="신규 테스트 법안"):
@@ -103,6 +103,121 @@ class BillSyncPipelineTests(TestCase):
         self.assertEqual(second.created_count, 0)
         self.assertEqual(second.updated_count, 0)
         self.assertEqual(second.status, "no_changes")
+
+    def test_daily_sync_updates_existing_bill_stage_without_duplicate(self):
+        base_row = {
+            **bill_row("DAILY-001", "Daily tracked bill"),
+            "COMMITTEE": None,
+            "PROC_RESULT": None,
+        }
+        BillSyncService(client=FakeAssemblyClient(pages={1: [base_row]})).run(
+            pages=1,
+            trigger="scheduled",
+        )
+
+        refreshed_row = {
+            **base_row,
+            "COMMITTEE": "Environment Committee",
+            "COMMITTEE_DT": "2026-06-24",
+        }
+        second = BillSyncService(client=FakeAssemblyClient(pages={1: [refreshed_row]})).run(
+            pages=1,
+            trigger="scheduled",
+        )
+
+        bill = Bill.objects.get(bill_no="DAILY-001")
+        self.assertEqual(Bill.objects.filter(bill_no="DAILY-001").count(), 1)
+        self.assertEqual(bill.stage, "committee")
+        self.assertEqual(bill.result_status, "pending")
+        self.assertEqual(second.created_count, 0)
+        self.assertEqual(second.updated_count, 1)
+        self.assertEqual(second.status, "success")
+
+    def test_committee_result_does_not_mark_bill_as_passed(self):
+        create_bill("CMT-001")
+        run = BillSyncService(
+            client=FakeAssemblyClient(
+                committee=[
+                    {
+                        "BILL_NO": "CMT-001",
+                        "BILL_NAME": "Committee passed alternative",
+                        "CURR_COMMITTEE": "Environment Committee",
+                        "PROPOSE_DT": "2026-06-22",
+                        "CMT_PROC_RESULT_CD": "대안가결",
+                        "CMT_PROC_DT": "2026-06-24",
+                    }
+                ]
+            )
+        ).run(pages=1)
+
+        bill = Bill.objects.get(bill_no="CMT-001")
+        self.assertEqual(run.status, "success")
+        self.assertEqual(bill.stage, "committee")
+        self.assertEqual(bill.result_status, "alternative_passed")
+        self.assertEqual(bill.result_text, "대안가결")
+
+    def test_law_processing_moves_bill_to_plenary_not_passed(self):
+        create_bill("LAW-001")
+        BillSyncService(
+            client=FakeAssemblyClient(
+                committee=[
+                    {
+                        "BILL_NO": "LAW-001",
+                        "BILL_NAME": "Law committee passed bill",
+                        "PROPOSE_DT": "2026-06-22",
+                        "LAW_PROC_RESULT_CD": "수정가결",
+                        "LAW_PROC_DT": "2026-06-24",
+                    }
+                ]
+            )
+        ).run(pages=1)
+
+        bill = Bill.objects.get(bill_no="LAW-001")
+        self.assertEqual(bill.stage, "plenary")
+        self.assertEqual(bill.result_status, "modified_passed")
+
+    def test_plenary_passed_result_moves_bill_to_passed(self):
+        create_bill("PLN-001")
+        BillSyncService(
+            client=FakeAssemblyClient(
+                plenary=[
+                    {
+                        "BILL_NO": "PLN-001",
+                        "BILL_NM": "Plenary passed bill",
+                        "PROPOSE_DT": "2026-06-22",
+                        "PROC_RESULT_CD": "원안가결",
+                    }
+                ]
+            )
+        ).run(pages=1)
+
+        bill = Bill.objects.get(bill_no="PLN-001")
+        self.assertEqual(bill.stage, "passed")
+        self.assertEqual(bill.result_status, "original_passed")
+
+    def test_closed_result_is_recorded_without_marking_passed(self):
+        bill = create_bill("CLS-001")
+        bill.stage = "committee"
+        bill.save(update_fields=["stage"])
+
+        BillSyncService(
+            client=FakeAssemblyClient(
+                plenary=[
+                    {
+                        "BILL_NO": "CLS-001",
+                        "BILL_NM": "Closed bill",
+                        "PROPOSE_DT": "2026-06-22",
+                        "PROC_RESULT_CD": "대안반영폐기",
+                        "PROC_DT": "2026-06-24",
+                    }
+                ]
+            )
+        ).run(pages=1)
+
+        bill.refresh_from_db()
+        self.assertEqual(bill.stage, "committee")
+        self.assertEqual(bill.result_status, "alternative_discarded")
+        self.assertEqual(bill.result_text, "대안반영폐기")
 
     def test_partial_api_failure_is_recorded(self):
         client = FakeAssemblyClient(
@@ -349,6 +464,33 @@ class BillProcessingTests(TestCase):
         self.assertTrue(BillSummary.objects.filter(bill=self.bill).exists())
         self.assertTrue(Bill.objects.filter(pk=self.bill.pk).exists())
 
+    def test_similarity_processor_stores_provider_matches_after_summary(self):
+        other_bill = create_bill("SIM-002")
+        other_bill.title = "비슷한 테스트 법안"
+        other_bill.stage = "committee"
+        other_bill.save(update_fields=["title", "stage"])
+        BillSummary.objects.create(
+            bill=self.bill,
+            summary_1="첫 번째",
+            summary_2="두 번째",
+            summary_3="세 번째",
+        )
+        task = BillProcessingTask.objects.create(
+            bill=self.bill,
+            processor="similarity",
+            max_attempts=1,
+        )
+        processor = SimilarityProcessor(provider=lambda bill: [other_bill])
+
+        stats = BillTaskWorker(processors={"similarity": processor}).run(limit=1)
+
+        task.refresh_from_db()
+        self.assertEqual(stats["succeeded"], 1)
+        self.assertEqual(task.status, "succeeded")
+        similar = self.bill.similar_bills.get()
+        self.assertEqual(similar.title, other_bill.title)
+        self.assertEqual(similar.stage_label, "위원회 심사")
+
 
 class DatabaseOnlyApiTests(TestCase):
     def setUp(self):
@@ -385,6 +527,23 @@ class DatabaseOnlyApiTests(TestCase):
         self.assertEqual(response.data["status"], "success")
         self.assertEqual(response.data["createdCount"], 2)
         self.assertIsNotNone(response.data["lastSuccessAt"])
+
+    def test_bill_list_puts_summarized_bills_before_pending_bills(self):
+        summarized = create_bill("SUMMARY-READY")
+        summarized.proposed_at = self.bill.proposed_at - datetime.timedelta(days=10)
+        summarized.save(update_fields=["proposed_at"])
+        BillSummary.objects.create(
+            bill=summarized,
+            summary_1="Ready summary",
+            summary_2="",
+            summary_3="",
+        )
+
+        response = self.client.get(reverse("bills-list"), {"sort": "-proposed_at", "page_size": 2})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["bills"][0]["id"], summarized.bill_id)
+        self.assertEqual(response.data["bills"][1]["id"], self.bill.bill_id)
 
 
 class SearchResponseTests(TestCase):
@@ -424,8 +583,56 @@ class SearchResponseTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["aiStatus"], "ready")
-        self.assertIn(PLAIN_DISCLAIMER, response.data["intro"])
+        self.assertNotIn("법률 자문", response.data["intro"])
         explain.assert_called_once()
+
+    def test_search_snapshot_uses_result_based_display_tags(self):
+        response = self.client.post(
+            reverse("search"),
+            {"query": "내가 고등학생인데 나랑 관련된 법안이 있을까"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("교육", response.data["snapshot"]["displayTags"])
+        self.assertNotIn("내가", response.data["snapshot"]["displayTags"])
+
+    def test_search_does_not_fallback_to_latest_when_no_db_match(self):
+        response = self.client.post(
+            reverse("search"),
+            {"query": "조세 관련 법안 중에 이미 공포가 된게 있어?"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.data["aiPending"])
+        self.assertEqual(response.data["bills"], [])
+        self.assertIn("찾지 못했습니다", response.data["intro"])
+
+    def test_search_filters_natural_language_by_topic_and_stage(self):
+        tax_bill = create_bill("TAX-001")
+        tax_bill.title = "조세특례제한법 일부개정법률안"
+        tax_bill.stage = "passed"
+        tax_bill.result_status = "original_passed"
+        tax_bill.result_text = "원안가결"
+        tax_bill.save(update_fields=["title", "stage", "result_status", "result_text"])
+        BillSummary.objects.create(
+            bill=tax_bill,
+            summary_1="조세 특례 적용 범위를 정비합니다.",
+            summary_2="세액 공제 기준을 조정합니다.",
+            summary_3="납세자의 예측 가능성을 높입니다.",
+        )
+
+        response = self.client.post(
+            reverse("search"),
+            {"query": "조세 관련 법안 중에 이미 공포가 된게 있어?"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["aiPending"])
+        self.assertEqual(response.data["bills"][0]["id"], tax_bill.bill_id)
+        self.assertEqual(response.data["snapshot"]["filters"]["stage"], ["passed"])
 
     def test_model_output_is_normalized_to_short_plain_text(self):
         raw = "## 안내\n**학교 급식**을 설명할게요. 😊\n---\n* 핵심 내용입니다."
@@ -436,3 +643,10 @@ class SearchResponseTests(TestCase):
         self.assertNotIn("😊", cleaned)
         self.assertNotIn("---", cleaned)
         self.assertLessEqual(len(cleaned), 100)
+
+    def test_search_explanation_is_split_into_readable_lines(self):
+        text = "현재 DB 기준으로 관련 법안이 있습니다. 대표 법안은 교육환경 보호를 다룹니다. 학교 주변 안전과 학생 보호가 핵심입니다."
+        formatted = format_search_explanation(text)
+
+        self.assertIn("\n", formatted)
+        self.assertLessEqual(len(formatted.splitlines()), 3)

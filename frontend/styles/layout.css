@@ -159,5 +159,4 @@
 
 
   /* ============ FOOTER ============ */
-  footer { max-width: 1240px; margin: 0 auto; padding: 24px 32px 64px; color: var(--ink-3); font-size: 12.5px; display: flex; justify-content: space-between; gap: 24px; flex-wrap: wrap; border-top: 1px solid var(--line); }
-  footer .disclaimer { max-width: 60ch; line-height: 1.6; }
+  footer { max-width: 1240px; margin: 0 auto; padding: 24px 32px 64px; color: var(--ink-3); font-size: 12.5px; line-height: 1.6; border-top: 1px solid var(--line); text-align: left; }

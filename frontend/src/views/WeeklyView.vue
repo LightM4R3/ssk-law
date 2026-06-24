@@ -65,7 +65,6 @@ function openWeeklyItem(item) {
           <span class="weekly-views">{{ Number(item.view || 0).toLocaleString() }}</span>
           <span v-if="item.trend" class="weekly-trend" :class="{ down: item.down }">{{ item.trend }}</span>
         </div>
-        <div class="weekly-go">슥 보기</div>
       </article>
     </div>
   </section>

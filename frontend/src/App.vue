@@ -4,6 +4,7 @@ import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
 import BillModal from "./components/BillModal.vue";
 import PostCreateModal from "./components/PostCreateModal.vue";
 import SimilarBillModal from "./components/SimilarBillModal.vue";
+import { AUTH_EXPIRED_EVENT } from "./services/api";
 import { useAppStore } from "./stores/app";
 import { useAuthStore } from "./stores/auth";
 
@@ -22,6 +23,7 @@ const scrollThumbHeight = ref(64);
 const scrollThumbTop = ref(0);
 let tickerTimer = null;
 let pageResizeObserver = null;
+let authExpiredHandled = false;
 const activeTickerItem = computed(() => {
   const items = store.tickerItems;
   if (!items.length) return null;
@@ -142,6 +144,20 @@ function scrollToTop() {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
+function handleAuthExpired() {
+  if (authExpiredHandled) return;
+  authExpiredHandled = true;
+  authStore.expireSession();
+  window.alert("로그인 세션이 만료되었습니다. 다시 로그인해주세요.");
+  window.location.reload();
+}
+
+async function refreshSessionOnRouteChange() {
+  if (!authStore.isAuthenticated) return;
+  const payload = await authStore.refreshSession();
+  if (!payload) handleAuthExpired();
+}
+
 function updateScrollIndicator() {
   const doc = document.documentElement;
   const scrollTop = window.scrollY || doc.scrollTop || 0;
@@ -173,6 +189,7 @@ onMounted(() => {
   if (!authStore.initialized) authStore.loadCurrentAccount();
   startTickerRotation();
   updateScrollIndicator();
+  window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
   window.addEventListener("scroll", updateScrollIndicator, { passive: true });
   window.addEventListener("resize", updateScrollIndicator);
   if ("ResizeObserver" in window) {
@@ -183,6 +200,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.clearInterval(tickerTimer);
+  window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
   window.removeEventListener("scroll", updateScrollIndicator);
   window.removeEventListener("resize", updateScrollIndicator);
   pageResizeObserver?.disconnect();
@@ -196,6 +214,7 @@ watch(isAuthLayout, (authLayout) => {
 watch(() => route.fullPath, () => {
   closeOpenOverlays();
   closeHeaderMenu();
+  refreshSessionOnRouteChange();
   nextTick(updateScrollIndicator);
 });
 
@@ -354,7 +373,7 @@ watch(() => store.tickerItems.length, (length) => {
   </main>
 
   <footer v-if="!isAuthLayout">
-    슥법 · SSK-Law
+    <span>슥법 · SSK-Law · 슥법의 설명은 국회 발의안 데이터에 기반한 참고 정보이며, 구체적인 법률 자문을 대신하지 않습니다.</span>
   </footer>
 
   <div
