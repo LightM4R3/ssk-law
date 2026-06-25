@@ -99,14 +99,27 @@ class SimilarBill(models.Model):
     """유사 법안 (기준 법안에 연결)."""
 
     source_bill = models.ForeignKey(Bill, on_delete=models.CASCADE, related_name="similar_bills")
+    target_bill = models.ForeignKey(
+        Bill,
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="recommended_by_bills",
+    )
     title = models.CharField(max_length=500)
     date = models.CharField(max_length=20, blank=True, default="")
     stage_label = models.CharField(max_length=30, blank=True, default="")
+    score = models.FloatField(default=0)
+    rank = models.PositiveIntegerField(default=0)
+    method = models.CharField(max_length=50, blank=True, default="")
+    generated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "similar_bill"
+        ordering = ["rank", "-score", "title"]
         indexes = [
             models.Index(fields=["source_bill"], name="idx_sb_source"),
+            models.Index(fields=["source_bill", "rank"], name="idx_sb_source_rank"),
         ]
 
     def __str__(self):

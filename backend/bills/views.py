@@ -11,7 +11,13 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 
 from .models import Bill, BillSummary, Category, SyncRun
-from .serializers import BillDetailSerializer, BillListSerializer, CategorySerializer
+from .serializers import (
+    BillDetailSerializer,
+    BillListSerializer,
+    CategorySerializer,
+    SimilarBillSerializer,
+)
+from .services.similarity import ensure_similar_bills
 from services.ollama import explain_search
 from chat.masking import mask_personal_info
 from chat.models import ChatSession, ChatMessage
@@ -43,7 +49,7 @@ def categories_view(request):
 @api_view(["GET"])
 def picks_view(request):
     """홈 추천 법안 5건 (조회수 상위 + 요약 있는 법안)."""
-    bills = (
+    bills = list(
         Bill.objects
         .filter(summary__isnull=False)
         .select_related("summary")
@@ -52,13 +58,15 @@ def picks_view(request):
     )
     if not bills:
         # fallback: just return latest 5
-        bills = (
+        bills = list(
             Bill.objects
             .select_related("summary")
             .prefetch_related("bill_categories__category", "similar_bills", "processing_tasks")
             .order_by("-proposed_at")[:5]
         )
-    serializer = BillListSerializer(bills, many=True)
+    for bill in bills:
+        ensure_similar_bills(bill, limit=5)
+    serializer = BillListSerializer(bills, many=True, context={"include_similar": True})
     return Response({"picks": serializer.data})
 
 
@@ -152,6 +160,44 @@ def bill_detail_view(request, bill_id):
 
     serializer = BillDetailSerializer(bill)
     return Response(serializer.data)
+
+
+# ---------------------------------------------------------------------------
+# GET /api/bills/<bill_id>/similar
+# ---------------------------------------------------------------------------
+@api_view(["GET"])
+def bill_similar_view(request, bill_id):
+    """Lazy-load similar bills for one bill from the local DB/cache only."""
+    limit = min(max(int(request.query_params.get("limit", 5)), 1), 10)
+    refresh = request.query_params.get("refresh") == "1"
+    try:
+        bill = (
+            Bill.objects
+            .select_related("summary")
+            .prefetch_related("bill_categories__category")
+            .get(bill_id=bill_id)
+        )
+    except Bill.DoesNotExist:
+        try:
+            bill = (
+                Bill.objects
+                .select_related("summary")
+                .prefetch_related("bill_categories__category")
+                .get(pk=bill_id)
+            )
+        except (Bill.DoesNotExist, ValueError):
+            return Response(
+                {"error": {"code": "NOT_FOUND", "message": "?대떦 踰뺤븞??李얠쓣 ???놁뒿?덈떎."}},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+    similar = ensure_similar_bills(bill, limit=limit, refresh=refresh)
+    return Response(
+        {
+            "billId": bill.bill_id,
+            "similar": SimilarBillSerializer(similar, many=True).data,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -300,7 +346,10 @@ DANGEROUS_SEARCH_TERMS = (
 
 SEARCH_STOPWORDS = {
     "관련",
+    "관련된",
+    "관련한",
     "법안",
+    "법의안",
     "법률",
     "법률안",
     "발의안",
@@ -331,6 +380,7 @@ SEARCH_TOPIC_SYNONYMS = {
     "노동": ["노동", "근로", "임금", "고용", "해고", "노조", "산재"],
     "안전": ["안전", "재난", "소방", "범죄", "보호구역", "생활안전"],
     "디지털": ["디지털", "AI", "ai", "인공지능", "개인정보", "정보통신", "플랫폼", "데이터"],
+    "기후": ["기후", "기후위기", "기후변화", "탄소", "탄소중립", "온실가스", "환경", "에너지", "재생에너지", "녹색", "온난화", "배출권", "미세먼지"],
 }
 
 SEARCH_STAGE_TERMS = {
@@ -375,15 +425,45 @@ TITLE_TAG_STOPWORDS = {
 }
 
 
+SEARCH_SUFFIX_STOPWORDS = (
+    "관련된",
+    "관련한",
+    "관련",
+    "법의안",
+    "법률안",
+    "발의안",
+    "법안",
+    "법률",
+)
+
+
+def _expand_search_token(token):
+    normalized = token.strip().lower()
+    if not normalized:
+        return []
+
+    variants = [normalized]
+    for suffix in SEARCH_SUFFIX_STOPWORDS:
+        if normalized.endswith(suffix) and len(normalized) > len(suffix):
+            variants.append(normalized[: -len(suffix)])
+
+    expanded = []
+    for variant in variants:
+        if len(variant) < 2 or variant in SEARCH_STOPWORDS:
+            continue
+        if variant not in expanded:
+            expanded.append(variant)
+    return expanded
+
+
 def _analyze_search_query(query):
     tokens = re.findall(r"[가-힣A-Za-z0-9]+", query)
     query_lower = query.lower()
     keywords = []
     for token in tokens:
-        normalized = token.strip().lower()
-        if len(normalized) < 2 or normalized in SEARCH_STOPWORDS or normalized in keywords:
-            continue
-        keywords.append(normalized)
+        for normalized in _expand_search_token(token):
+            if normalized not in keywords:
+                keywords.append(normalized)
     topics = []
     expanded_keywords = list(keywords)
     for topic, terms in SEARCH_TOPIC_SYNONYMS.items():
@@ -507,7 +587,7 @@ def _search_bills_by_analysis(analysis: dict, limit: int = 5) -> list:
 def _compose_db_search_answer(query: str, analysis: dict, bills: list) -> str:
     """검색 1차 응답과 AI 장애 fallback에 쓰는 DB 근거 답변."""
     if not bills:
-        return "현재 DB에 저장된 법안 기준으로는 질문 조건에 맞는 법안을 찾지 못했습니다."
+        return "질문 조건에 맞는 법안을 찾지 못했습니다. 표현을 조금 바꾸거나 더 넓은 주제어로 다시 검색해 보세요."
 
     count = len(bills)
     titles = ", ".join(bill.title for bill in bills[:2])
@@ -516,9 +596,9 @@ def _compose_db_search_answer(query: str, analysis: dict, bills: list) -> str:
     if analysis.get("intent") == "existence_check":
         if stage_filter:
             stage_names = ", ".join(dict(Bill.STAGE_CHOICES).get(stage, stage) for stage in stage_filter)
-            return f"현재 DB 기준으로 {stage_names} 단계와 질문 내용이 겹치는 법안 {count}건을 찾았습니다. 대표적으로 {titles}이 있습니다."
-        return f"현재 DB 기준으로 질문 내용과 겹치는 법안 {count}건을 찾았습니다. 대표적으로 {titles}이 있습니다."
-    return f"현재 DB에 저장된 법안 중 질문과 관련성이 있는 법안 {count}건을 먼저 찾았습니다. 대표 결과는 {titles}입니다."
+            return f"{stage_names} 단계에서 질문 내용과 겹치는 법안 {count}건을 찾았습니다. 대표적으로 {titles}이 있습니다."
+        return f"질문 내용과 겹치는 법안 {count}건을 찾았습니다. 대표적으로 {titles}이 있습니다."
+    return f"질문과 관련성이 있는 법안 {count}건을 찾았습니다. 대표 결과는 {titles}입니다."
 
 
 def _build_search_display_tags(analysis: dict, bills: list) -> list[str]:

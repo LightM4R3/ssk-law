@@ -2,6 +2,7 @@
 
 from rest_framework import serializers
 from .models import Bill, BillCategory, BillSummary, Category, SimilarBill
+from .services.similarity import SIMILARITY_METHOD
 
 
 class CategorySerializer(serializers.Serializer):
@@ -20,11 +21,28 @@ class CategoryNestedSerializer(serializers.Serializer):
 
 
 class SimilarBillSerializer(serializers.ModelSerializer):
-    stage = serializers.CharField(source="stage_label")
+    targetId = serializers.SerializerMethodField()
+    title = serializers.SerializerMethodField()
+    date = serializers.SerializerMethodField()
+    stage = serializers.SerializerMethodField()
 
     class Meta:
         model = SimilarBill
-        fields = ["title", "date", "stage"]
+        fields = ["targetId", "title", "date", "stage", "score", "rank", "method"]
+
+    def get_targetId(self, similar):
+        return similar.target_bill.bill_id if similar.target_bill else ""
+
+    def get_title(self, similar):
+        return similar.target_bill.title if similar.target_bill else similar.title
+
+    def get_date(self, similar):
+        if similar.target_bill and similar.target_bill.proposed_at:
+            return similar.target_bill.proposed_at.strftime("%Y.%m.%d")
+        return similar.date
+
+    def get_stage(self, similar):
+        return similar.target_bill.get_stage_display() if similar.target_bill else similar.stage_label
 
 
 class BillListSerializer(serializers.Serializer):
@@ -76,7 +94,15 @@ class BillListSerializer(serializers.Serializer):
             return ""
 
     def get_similar(self, bill):
-        sims = bill.similar_bills.all()
+        if not self.context.get("include_similar", False):
+            return []
+        sims = (
+            SimilarBill.objects
+            .filter(source_bill=bill)
+            .filter(method=SIMILARITY_METHOD)
+            .select_related("target_bill")
+            .order_by("rank", "-score")
+        )
         return SimilarBillSerializer(sims, many=True).data
 
     def get_summaryStatus(self, bill):

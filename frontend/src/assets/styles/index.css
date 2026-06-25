@@ -104,3 +104,18 @@ button.sim-parent {
 .cat-grid .cat-card {
   min-height: 300px;
 }
+
+.global-error-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: rgba(248, 247, 244, .78);
+  backdrop-filter: blur(8px);
+}
+
+.global-error-overlay .api-state-card {
+  width: min(760px, 100%);
+}

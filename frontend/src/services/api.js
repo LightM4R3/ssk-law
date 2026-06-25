@@ -31,12 +31,21 @@ async function request(path, options = {}) {
     if (csrfToken) headers.set("X-CSRFToken", csrfToken);
   }
 
-  const response = await fetch(`${API_BASE}${path}`, {
-    ...fetchOptions,
-    method,
-    headers,
-    credentials: "include",
-  });
+  let response;
+  try {
+    response = await fetch(`${API_BASE}${path}`, {
+      ...fetchOptions,
+      method,
+      headers,
+      credentials: "include",
+    });
+  } catch (cause) {
+    const error = new Error("NETWORK_REQUEST_FAILED");
+    error.status = 0;
+    error.code = "NETWORK_ERROR";
+    error.cause = cause;
+    throw error;
+  }
 
   if (!response.ok) {
     const contentType = response.headers.get("content-type") || "";
@@ -44,7 +53,7 @@ async function request(path, options = {}) {
       ? await response.json().catch(() => null)
       : await response.text().catch(() => "");
     const serverError = payload?.error || null;
-    const message = serverError?.message || (typeof payload === "string" ? payload : "") || `API request failed: ${response.status}`;
+    const message = serverError?.message || `API request failed: ${response.status}`;
     const error = new Error(message);
     error.status = response.status;
     error.code = serverError?.code || null;
@@ -70,18 +79,46 @@ async function request(path, options = {}) {
   return response.json();
 }
 
+function isUnsafeErrorMessage(message) {
+  const text = String(message || "").trim();
+  if (!text) return true;
+  return (
+    text === "NETWORK_REQUEST_FAILED"
+    || text.startsWith("API request failed")
+    || /<(!doctype|html|head|body|style|script|meta)\b/i.test(text)
+    || /Traceback|Internal Server Error|OperationalError|ReferenceError|TypeError|SyntaxError/i.test(text)
+  );
+}
+
+function safeServerMessage(message, fallback) {
+  return isUnsafeErrorMessage(message) ? fallback : String(message).slice(0, 180);
+}
+
 export function getApiErrorState(error, fallbackTitle = "법률을 슥 가져오지 못하고 있어요") {
   const status = Number(error?.status || 0);
   const code = error?.code || "";
   const rawMessage = error?.message || "";
-  const serverMessage = rawMessage.startsWith("API request failed") ? "" : rawMessage;
+  const serverMessage = isUnsafeErrorMessage(rawMessage) ? "" : rawMessage;
+
+  if (status === 0 || code === "NETWORK_ERROR") {
+    return {
+      status,
+      code,
+      title: "서버와 연결하지 못하고 있어요",
+      message: "네트워크 상태나 백엔드 서버 실행 상태를 확인한 뒤 다시 요청해 주세요.",
+      action: "retry",
+      actionLabel: "다시 요청하기",
+    };
+  }
 
   if (status === 500) {
     return {
       status,
       code,
       title: "법률을 서버에서 슥 정리하지 못하고 있어요",
-      message: serverMessage || "서버 내부 처리 중 문제가 생겼습니다. 잠시 후 다시 시도해 주세요.",
+      message: safeServerMessage(serverMessage, "서버 내부 처리 중 문제가 생겼습니다. 잠시 후 다시 요청해 주세요."),
+      action: "retry",
+      actionLabel: "다시 요청하기",
     };
   }
 
@@ -90,7 +127,20 @@ export function getApiErrorState(error, fallbackTitle = "법률을 슥 가져오
       status,
       code,
       title: "AI가 잠시 응답하지 못하고 있어요",
-      message: serverMessage || "요약 또는 검색 모델 연결이 불안정합니다. Ollama 실행 상태를 확인해 주세요.",
+      message: safeServerMessage(serverMessage, "요약 또는 검색 모델 연결이 불안정합니다. 잠시 후 다시 요청해 주세요."),
+      action: "retry",
+      actionLabel: "다시 요청하기",
+    };
+  }
+
+  if ([502, 504].includes(status)) {
+    return {
+      status,
+      code,
+      title: "서버 응답이 잠시 불안정해요",
+      message: "요청을 처리하는 중 서버 연결이 끊겼습니다. 잠시 후 다시 요청해 주세요.",
+      action: "retry",
+      actionLabel: "다시 요청하기",
     };
   }
 
@@ -99,7 +149,9 @@ export function getApiErrorState(error, fallbackTitle = "법률을 슥 가져오
       status,
       code,
       title: "요청한 법안을 찾지 못했어요",
-      message: serverMessage || "법안이 삭제되었거나 아직 동기화되지 않았을 수 있습니다.",
+      message: safeServerMessage(serverMessage, "법안이 삭제되었거나 아직 동기화되지 않았을 수 있습니다."),
+      action: "retry",
+      actionLabel: "다시 요청하기",
     };
   }
 
@@ -108,7 +160,9 @@ export function getApiErrorState(error, fallbackTitle = "법률을 슥 가져오
       status,
       code,
       title: "요청 내용을 다시 확인해 주세요",
-      message: serverMessage || "검색어나 필터 조건이 올바르지 않습니다.",
+      message: safeServerMessage(serverMessage, "검색어나 필터 조건이 올바르지 않습니다."),
+      action: "retry",
+      actionLabel: "다시 요청하기",
     };
   }
 
@@ -116,7 +170,20 @@ export function getApiErrorState(error, fallbackTitle = "법률을 슥 가져오
     status,
     code,
     title: fallbackTitle,
-    message: serverMessage || "백엔드 서버 연결 상태를 확인한 뒤 다시 시도해 주세요.",
+    message: safeServerMessage(serverMessage, "일시적인 문제가 발생했습니다. 다시 요청하거나 페이지를 새로고침해 주세요."),
+    action: status ? "retry" : "reload",
+    actionLabel: status ? "다시 요청하기" : "새로고침하기",
+  };
+}
+
+export function getFrontendErrorState() {
+  return {
+    status: null,
+    code: "FRONTEND_ERROR",
+    title: "화면을 잠시 정리하지 못했어요",
+    message: "브라우저에서 일시적인 문제가 발생했습니다. 새로고침하면 다시 시도할 수 있어요.",
+    action: "reload",
+    actionLabel: "새로고침하기",
   };
 }
 
@@ -162,9 +229,13 @@ export function normalizeSummary(summary) {
 
 export function normalizeSimilar(similar = []) {
   return (Array.isArray(similar) ? similar : []).map((item) => ({
+    targetId: String(item.targetId || item.target_id || ""),
     title: item.title || "",
     date: normalizeDate(item.date),
     stage: item.stage || "",
+    score: Number(item.score || 0),
+    rank: Number(item.rank || 0),
+    method: item.method || "",
   })).filter((item) => item.title);
 }
 
@@ -193,6 +264,7 @@ export function normalizeBill(bill, options = {}) {
     viewCount: Number(bill?.viewCount ?? bill?.view_count ?? comments),
     impact: bill?.impact || "",
     similar: normalizeSimilar(bill?.similar),
+    similarLoaded: Boolean(bill?.similarLoaded || (Array.isArray(bill?.similar) && bill.similar.length)),
     detailLink: bill?.detailLink || bill?.detail_link || "",
     syncedAt: bill?.syncedAt || bill?.synced_at || "",
   };
@@ -258,6 +330,10 @@ export const lawApi = {
   },
   getBill(id) {
     return request(`/api/bills/${id}`);
+  },
+  getSimilarBills(id, params = {}) {
+    const query = new URLSearchParams(params).toString();
+    return request(`/api/bills/${id}/similar${query ? `?${query}` : ""}`);
   },
   searchBills(query) {
     return request("/api/search", {

@@ -25,6 +25,7 @@ const billPosts = ref([]);
 const billPostsStatus = ref("idle");
 const billPostsError = ref(null);
 const activePost = ref(null);
+let billPostsTimer = null;
 const stageOrder = ["proposed", "committee", "plenary", "passed"];
 const stage = computed(() => store.stageMeta(props.bill.stage));
 const lastStageIndex = stageOrder.length - 1;
@@ -55,6 +56,10 @@ const syncedDate = computed(() => {
   if (!props.bill.syncedAt) return "";
   return String(props.bill.syncedAt).slice(0, 10).replaceAll("-", ".");
 });
+const similarLoading = computed(() => Boolean(store.similarLoading[props.bill.id]));
+const similarError = computed(() => store.similarErrors[props.bill.id]);
+const similarLoaded = computed(() => Boolean(props.bill.similarLoaded));
+const similarItems = computed(() => props.bill.similar || []);
 
 function openDetailLink() {
   if (props.bill.detailLink) {
@@ -62,24 +67,51 @@ function openDetailLink() {
   }
 }
 
+function loadSimilarBills() {
+  store.loadSimilarBills(props.bill.id, { limit: 5 });
+}
+
 async function loadBillPosts() {
-  if (!props.bill?.id) return;
+  const billId = props.bill?.id;
+  if (!billId) return;
 
   billPostsStatus.value = "loading";
   billPostsError.value = null;
   try {
     const payload = await postApi.getPosts({
-      billId: props.bill.id,
+      billId,
       page: 1,
       page_size: 5,
       sort: "latest",
     });
+    if (String(props.bill?.id) !== String(billId)) return;
     billPosts.value = (payload?.posts || []).map(normalizePost);
     billPostsStatus.value = "ready";
   } catch (error) {
+    if (String(props.bill?.id) !== String(billId)) return;
     billPostsStatus.value = "error";
     billPostsError.value = getApiErrorState(error, "포스트를 불러오지 못했어요");
   }
+}
+
+function clearBillPostsTimer() {
+  if (billPostsTimer !== null) {
+    window.clearTimeout(billPostsTimer);
+    billPostsTimer = null;
+  }
+}
+
+function scheduleBillPostsLoad() {
+  clearBillPostsTimer();
+  if (!props.bill?.id) return;
+
+  billPosts.value = [];
+  billPostsStatus.value = "loading";
+  billPostsError.value = null;
+  billPostsTimer = window.setTimeout(() => {
+    billPostsTimer = null;
+    loadBillPosts();
+  }, 260);
 }
 
 function prependCreatedPost(post) {
@@ -150,14 +182,14 @@ function formatPostDate(value) {
 }
 
 function closeOnEscape(event) {
-  if (event.key === "Escape") {
+  if (event.key === "Escape" && !activePost.value) {
     emit("close");
   }
 }
 
 watch(() => props.bill?.id, () => {
   activePost.value = null;
-  loadBillPosts();
+  scheduleBillPostsLoad();
 }, { immediate: true });
 
 watch(() => props.createdPost, (post) => {
@@ -165,11 +197,24 @@ watch(() => props.createdPost, (post) => {
 });
 
 onMounted(() => document.addEventListener("keydown", closeOnEscape));
-onUnmounted(() => document.removeEventListener("keydown", closeOnEscape));
+onUnmounted(() => {
+  clearBillPostsTimer();
+  document.removeEventListener("keydown", closeOnEscape);
+});
 </script>
 
 <template>
-  <div class="modal-overlay" @click.self="emit('close')">
+  <PostModal
+    v-if="activePost"
+    :post="activePost"
+    :bill-title="bill.title"
+    @close="closePost"
+    @open-bill="closePost"
+    @open-user="openUserPage"
+    @updated="handlePostUpdated"
+    @deleted="handlePostDeleted"
+  />
+  <div v-else class="modal-overlay" @click.self="emit('close')">
     <div class="modal" role="dialog" aria-modal="true">
       <div class="modal-head">
         <div>
@@ -241,11 +286,39 @@ onUnmounted(() => document.removeEventListener("keydown", closeOnEscape));
           <p>{{ bill.impact }}</p>
         </div>
 
-        <div v-if="bill.similar?.length" class="modal-section">
-          <h4>유사 법안 {{ bill.similar.length }}건</h4>
-          <div class="similar">
+        <div class="modal-section similar-section">
+          <div class="similar-section-head">
+            <h4>유사 법안 보기</h4>
+            <span v-if="similarItems.length" class="similar-count">{{ similarItems.length }}건</span>
+          </div>
+          <p class="similar-help">
+            제목, 요약, 분야가 가까운 법안을 필요할 때만 불러와요.
+          </p>
+          <button
+            v-if="!similarItems.length && !similarLoading"
+            class="similar-load-btn"
+            type="button"
+            @click="loadSimilarBills"
+          >
+            유사 법안 보기
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M5 12h14" />
+              <path d="m13 5 7 7-7 7" />
+            </svg>
+          </button>
+          <div v-if="similarLoading" class="similar-loading">
+            <span class="similar-spinner" aria-hidden="true"></span>
+            유사한 법안을 찾는 중입니다.
+          </div>
+          <div v-else-if="similarError" class="similar-state">
+            {{ similarError.message }}
+          </div>
+          <div v-else-if="similarLoaded && !similarItems.length" class="similar-state">
+            아직 추천할 만한 유사 법안이 없습니다.
+          </div>
+          <div v-if="similarItems.length" class="similar">
             <button
-              v-for="(item, index) in bill.similar"
+              v-for="(item, index) in similarItems"
               :key="item.title"
               class="similar-item"
               type="button"
@@ -253,7 +326,9 @@ onUnmounted(() => document.removeEventListener("keydown", closeOnEscape));
             >
               <div>
                 <div class="similar-title">{{ item.title }}</div>
-                <div class="similar-meta">{{ item.date }} · {{ item.stage }}</div>
+                <div class="similar-meta">
+                  {{ item.date }} · {{ item.stage }}
+                </div>
               </div>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: var(--ink-4);" aria-hidden="true">
                 <path d="m9 18 6-6-6-6" />
@@ -305,15 +380,5 @@ onUnmounted(() => document.removeEventListener("keydown", closeOnEscape));
         </div>
       </div>
     </div>
-    <PostModal
-      v-if="activePost"
-      :post="activePost"
-      :bill-title="bill.title"
-      @close="closePost"
-      @open-bill="closePost"
-      @open-user="openUserPage"
-      @updated="handlePostUpdated"
-      @deleted="handlePostDeleted"
-    />
   </div>
 </template>

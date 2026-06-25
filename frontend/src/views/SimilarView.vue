@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from "vue";
+import { computed, watch } from "vue";
 import { useRouter } from "vue-router";
 
 import { useAppStore } from "../stores/app";
@@ -25,6 +25,8 @@ const parentSummary = computed(() => {
   if (!parent.value) return "";
   return Array.isArray(parent.value.summary) ? parent.value.summary[0] : parent.value.summaryText;
 });
+const isLoadingSimilar = computed(() => Boolean(parent.value && store.similarLoading[parent.value.id]));
+const similarError = computed(() => (parent.value ? store.similarErrors[parent.value.id] : null));
 
 function openParent() {
   if (parent.value) {
@@ -41,6 +43,11 @@ function openSimilar(index) {
 function goHome() {
   router.push({ name: "home" });
 }
+
+watch(() => parent.value?.id, (id) => {
+  if (!id) return;
+  store.loadSimilarBills(id, { limit: 10 });
+}, { immediate: true });
 </script>
 
 <template>
@@ -98,7 +105,15 @@ function goHome() {
       </div>
     </div>
 
-    <div v-if="parent.similar?.length" class="similar-grid">
+    <div v-if="isLoadingSimilar" class="similar-empty">
+      유사 법안을 불러오는 중입니다.
+    </div>
+
+    <div v-else-if="similarError" class="similar-empty">
+      {{ similarError.message }}
+    </div>
+
+    <div v-else-if="parent.similar?.length" class="similar-grid">
       <article
         v-for="(similar, index) in parent.similar"
         :key="similar.title"

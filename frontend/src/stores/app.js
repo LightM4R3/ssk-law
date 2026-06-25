@@ -9,6 +9,7 @@ import {
   lawApi,
   normalizeBill as normalizeApiBill,
   normalizeCategory as normalizeApiCategory,
+  normalizeSimilar,
 } from "../services/api";
 
 const navItems = [
@@ -93,6 +94,62 @@ function findBillByRef(state, ref) {
     || null;
 }
 
+function findBillByTitle(state, title) {
+  if (!title) return null;
+  return uniqueBills([...state.picks, ...state.bills, ...Object.values(state.billDetails)])
+    .find((bill) => bill.title === title)
+    || null;
+}
+
+function seedBillFromSimilar(parent, similar) {
+  if (!parent || !similar?.targetId) return null;
+  return withBillPresentation({
+    ...parent,
+    id: similar.targetId,
+    idx: similar.targetId,
+    title: similar.title || parent.title,
+    proposedAt: similar.date || "",
+    stage: similar.stage ? stageKeyFromLabel(similar.stage) : parent.stage,
+    summary: ["상세 정보를 불러오는 중입니다."],
+    summaryText: "상세 정보를 불러오는 중입니다.",
+    similar: [],
+    similarLoaded: false,
+    detailLoaded: false,
+  });
+}
+
+function mergeBillById(items, id, changes) {
+  return items.map((bill) => (
+    bill.id === id
+      ? withBillPresentation({ ...bill, ...changes })
+      : bill
+  ));
+}
+
+function deferAfterPaint(callback, delay = 180) {
+  if (typeof window === "undefined") {
+    callback();
+    return null;
+  }
+
+  let timerId = null;
+  const schedule = () => {
+    timerId = window.setTimeout(callback, delay);
+  };
+
+  if (typeof window.requestAnimationFrame === "function") {
+    window.requestAnimationFrame(schedule);
+  } else {
+    schedule();
+  }
+
+  return () => {
+    if (timerId !== null) window.clearTimeout(timerId);
+  };
+}
+
+let cancelPendingBillDetailLoad = null;
+
 function getWeeklyCategoryStats(state) {
   const viewsByCategory = new Map();
 
@@ -153,6 +210,8 @@ export const useAppStore = defineStore("app", {
     picks: [],
     weekly: [],
     billDetails: {},
+    similarLoading: {},
+    similarErrors: {},
     activeBillId: null,
     activeSimilar: null,
     searchLoading: false,
@@ -279,6 +338,8 @@ export const useAppStore = defineStore("app", {
       this.picks = [];
       this.weekly = [];
       this.billDetails = {};
+      this.similarLoading = {};
+      this.similarErrors = {};
       this.categoryBillLoading = {};
       this.categoryBillErrors = {};
 
@@ -336,8 +397,8 @@ export const useAppStore = defineStore("app", {
       this.apiStatus = loadedCount ? (errors.length ? "partial" : "ready") : "fallback";
       this.apiError = errors[0]?.message || null;
     },
-    async loadBillDetail(id) {
-      if (!id || this.billDetails[id]) return;
+    async loadBillDetail(id, options = {}) {
+      if (!id || (this.billDetails[id]?.detailLoaded && !options.force)) return;
 
       try {
         const detail = normalizeApiBill(await lawApi.getBill(id));
@@ -348,9 +409,50 @@ export const useAppStore = defineStore("app", {
           cats: detail.cats.length ? detail.cats : current?.cats || [],
           summary: detail.summary.length ? detail.summary : current?.summary || [],
           summaryText: detail.summaryText || current?.summaryText || "",
+          similar: current?.similar?.length ? current.similar : detail.similar,
+          similarLoaded: current?.similarLoaded || detail.similarLoaded,
+          detailLoaded: true,
         });
       } catch (error) {
         this.apiError = getApiErrorState(error).message;
+      }
+    },
+    async loadSimilarBills(id, options = {}) {
+      if (!id || this.similarLoading[id]) return;
+      const current = findBillByRef(this, id);
+      const requestedLimit = Number(options.limit || 5);
+      if (
+        current?.similarLoaded
+        && !options.refresh
+        && (current.similar?.length || 0) >= requestedLimit
+      ) return;
+
+      this.similarLoading[id] = true;
+      this.similarErrors[id] = null;
+      try {
+        const payload = await lawApi.getSimilarBills(id, {
+          limit: requestedLimit,
+          ...(options.refresh ? { refresh: 1 } : {}),
+        });
+        const similar = normalizeSimilar(payload?.similar || []);
+        const changes = { similar, similarLoaded: true };
+        this.picks = mergeBillById(this.picks, id, changes);
+        this.bills = mergeBillById(this.bills, id, changes);
+        if (this.billDetails[id]) {
+          this.billDetails[id] = withBillPresentation({
+            ...this.billDetails[id],
+            ...changes,
+          });
+        } else if (current) {
+          this.billDetails[id] = withBillPresentation({
+            ...current,
+            ...changes,
+          });
+        }
+      } catch (error) {
+        this.similarErrors[id] = getApiErrorState(error, "유사 법안을 불러오지 못했어요");
+      } finally {
+        this.similarLoading[id] = false;
       }
     },
     async loadCategoryBills(categoryId) {
@@ -446,22 +548,78 @@ export const useAppStore = defineStore("app", {
       }
     },
     openBill(id) {
+      if (cancelPendingBillDetailLoad) {
+        cancelPendingBillDetailLoad();
+        cancelPendingBillDetailLoad = null;
+      }
+
       this.activeBillId = id;
       this.activeSimilar = null;
       document.body.style.overflow = "hidden";
 
       if (this.apiStatus !== "fallback") {
-        this.loadBillDetail(id);
+        const current = findBillByRef(this, id);
+        const loadDetail = () => {
+          cancelPendingBillDetailLoad = null;
+          if (this.activeBillId === id) this.loadBillDetail(id);
+        };
+
+        if (current) {
+          cancelPendingBillDetailLoad = deferAfterPaint(loadDetail, 220);
+        } else {
+          loadDetail();
+        }
+      }
+    },
+    async openBillFromSimilar(id, seed = null) {
+      if (!id) return;
+      this.activeSimilar = null;
+
+      if (seed && !findBillByRef(this, id)) {
+        this.billDetails[id] = seed;
+      }
+
+      this.openBill(id);
+
+      if (this.apiStatus !== "fallback") {
+        await this.loadBillDetail(id, { force: true });
       }
     },
     closeBill() {
+      if (cancelPendingBillDetailLoad) {
+        cancelPendingBillDetailLoad();
+        cancelPendingBillDetailLoad = null;
+      }
       this.activeBillId = null;
       document.body.style.overflow = "";
     },
     openSimilar(parentId, index) {
+      const parent = findBillByRef(this, parentId);
+      const similar = parent?.similar?.[index];
+      if (similar?.targetId) {
+        this.openBillFromSimilar(similar.targetId, seedBillFromSimilar(parent, similar));
+        return;
+      }
+
+      const target = findBillByTitle(this, similar?.title);
+      if (target?.id) {
+        this.openBillFromSimilar(target.id);
+        return;
+      }
+
       this.activeBillId = null;
       this.activeSimilar = { parentId, index };
       document.body.style.overflow = "hidden";
+    },
+    openSimilarItem({ parent, similar, index = 0 } = {}) {
+      if (similar?.targetId) {
+        this.openBillFromSimilar(similar.targetId, seedBillFromSimilar(parent, similar));
+        return;
+      }
+
+      if (parent?.id) {
+        this.openSimilar(parent.id, index);
+      }
     },
     closeSimilar() {
       this.activeSimilar = null;

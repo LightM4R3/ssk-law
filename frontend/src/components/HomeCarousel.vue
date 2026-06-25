@@ -14,7 +14,7 @@ const props = defineProps({
   },
 });
 
-const emit = defineEmits(["select", "selectSimilar"]);
+const emit = defineEmits(["select"]);
 const router = useRouter();
 const store = useAppStore();
 const viewport = ref(null);
@@ -59,7 +59,7 @@ function goTo(nextIndex) {
 }
 
 function pointerDown(event) {
-  if (event.target.closest(".pick-cta")) return;
+  if (event.target.closest("button, a, input, textarea, .pick-side")) return;
   dragging.value = true;
   wasDrag.value = false;
   startX.value = event.clientX;
@@ -90,6 +90,10 @@ function openPick(pick) {
 
 function openSimilarPage(pick) {
   router.push({ name: "similar", params: { id: pick.id } });
+}
+
+function openSimilarBill(pick, similar, similarIndex) {
+  store.openSimilarItem({ parent: pick, similar, index: similarIndex });
 }
 
 function onKeydown(event) {
@@ -167,7 +171,8 @@ onUnmounted(() => {
                     :key="similar.title"
                     class="pick-sim"
                     type="button"
-                    @click.stop="emit('selectSimilar', { parentId: pick.id, index: similarIndex })"
+                    @pointerdown.stop
+                    @click.prevent.stop="openSimilarBill(pick, similar, similarIndex)"
                   >
                     <div class="pick-sim-top">
                       <span class="pick-sim-num">{{ String(similarIndex + 1).padStart(2, "0") }}</span>
@@ -183,7 +188,7 @@ onUnmounted(() => {
                     </div>
                   </button>
                 </div>
-                <button class="pick-sim-more" type="button" @click.stop="openSimilarPage(pick)">
+                <button class="pick-sim-more" type="button" @pointerdown.stop @click.prevent.stop="openSimilarPage(pick)">
                   유사 법안 더 보기
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="m9 6 6 6-6 6" />

@@ -1,10 +1,11 @@
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { RouterLink, RouterView, useRoute, useRouter } from "vue-router";
+import ApiStateCard from "./components/ApiStateCard.vue";
 import BillModal from "./components/BillModal.vue";
 import PostCreateModal from "./components/PostCreateModal.vue";
 import SimilarBillModal from "./components/SimilarBillModal.vue";
-import { AUTH_EXPIRED_EVENT } from "./services/api";
+import { AUTH_EXPIRED_EVENT, getFrontendErrorState } from "./services/api";
 import { useAppStore } from "./stores/app";
 import { useAuthStore } from "./stores/auth";
 
@@ -17,12 +18,9 @@ const isLoggingOut = ref(false);
 const postCreateBill = ref(null);
 const createdPostForBill = ref(null);
 const isHeaderMenuOpen = ref(false);
+const frontendErrorState = ref(null);
 const activeTickerIndex = ref(0);
-const hasScrollablePage = ref(false);
-const scrollThumbHeight = ref(64);
-const scrollThumbTop = ref(0);
 let tickerTimer = null;
-let pageResizeObserver = null;
 let authExpiredHandled = false;
 const activeTickerItem = computed(() => {
   const items = store.tickerItems;
@@ -152,28 +150,15 @@ function handleAuthExpired() {
   window.location.reload();
 }
 
+function handleFrontendError() {
+  frontendErrorState.value = getFrontendErrorState();
+  closeOpenOverlays();
+}
+
 async function refreshSessionOnRouteChange() {
   if (!authStore.isAuthenticated) return;
   const payload = await authStore.refreshSession();
   if (!payload) handleAuthExpired();
-}
-
-function updateScrollIndicator() {
-  const doc = document.documentElement;
-  const scrollTop = window.scrollY || doc.scrollTop || 0;
-  const scrollHeight = doc.scrollHeight || 0;
-  const clientHeight = window.innerHeight || doc.clientHeight || 0;
-  const maxScroll = Math.max(0, scrollHeight - clientHeight);
-  const isMobile = window.matchMedia("(max-width: 980px)").matches;
-  const trackTop = isMobile ? 18 : 24;
-  const trackBottom = isMobile ? 104 : 24;
-  const trackHeight = Math.max(96, clientHeight - trackTop - trackBottom);
-  const thumbHeight = Math.max(42, Math.min(trackHeight, trackHeight * (clientHeight / Math.max(scrollHeight, 1))));
-  const progress = maxScroll ? scrollTop / maxScroll : 0;
-
-  hasScrollablePage.value = maxScroll > 8;
-  scrollThumbHeight.value = thumbHeight;
-  scrollThumbTop.value = (trackHeight - thumbHeight) * progress;
 }
 
 function startTickerRotation() {
@@ -188,22 +173,14 @@ function startTickerRotation() {
 onMounted(() => {
   if (!authStore.initialized) authStore.loadCurrentAccount();
   startTickerRotation();
-  updateScrollIndicator();
   window.addEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
-  window.addEventListener("scroll", updateScrollIndicator, { passive: true });
-  window.addEventListener("resize", updateScrollIndicator);
-  if ("ResizeObserver" in window) {
-    pageResizeObserver = new ResizeObserver(updateScrollIndicator);
-    pageResizeObserver.observe(document.body);
-  }
+  window.addEventListener("ssk-law:frontend-error", handleFrontendError);
 });
 
 onUnmounted(() => {
   window.clearInterval(tickerTimer);
   window.removeEventListener(AUTH_EXPIRED_EVENT, handleAuthExpired);
-  window.removeEventListener("scroll", updateScrollIndicator);
-  window.removeEventListener("resize", updateScrollIndicator);
-  pageResizeObserver?.disconnect();
+  window.removeEventListener("ssk-law:frontend-error", handleFrontendError);
 });
 
 watch(isAuthLayout, (authLayout) => {
@@ -215,7 +192,6 @@ watch(() => route.fullPath, () => {
   closeOpenOverlays();
   closeHeaderMenu();
   refreshSessionOnRouteChange();
-  nextTick(updateScrollIndicator);
 });
 
 watch(() => store.tickerItems.length, (length) => {
@@ -372,23 +348,13 @@ watch(() => store.tickerItems.length, (length) => {
     <RouterView />
   </main>
 
+  <div v-if="frontendErrorState" class="global-error-overlay">
+    <ApiStateCard :state="frontendErrorState" />
+  </div>
+
   <footer v-if="!isAuthLayout">
     <span>슥법 · SSK-Law · 슥법의 설명은 국회 발의안 데이터에 기반한 참고 정보이며, 구체적인 법률 자문을 대신하지 않습니다.</span>
   </footer>
-
-  <div
-    v-if="!isAuthLayout && hasScrollablePage"
-    class="custom-scrollbar"
-    aria-hidden="true"
-  >
-    <div
-      class="custom-scrollbar-thumb"
-      :style="{
-        height: `${scrollThumbHeight}px`,
-        transform: `translateY(${scrollThumbTop}px)`,
-      }"
-    ></div>
-  </div>
 
   <button
     v-if="!isAuthLayout"

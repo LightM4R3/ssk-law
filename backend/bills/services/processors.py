@@ -100,8 +100,8 @@ class SimilarityProcessor(BillProcessor):
             raise ValueError("Similarity provider must return a list")
 
         similar = []
-        for item in matches[:10]:
-            normalized = self._normalize_match(bill, item)
+        for index, item in enumerate(matches[:10], start=1):
+            normalized = self._normalize_match(bill, item, index)
             if normalized:
                 similar.append(SimilarBill(source_bill=bill, **normalized))
 
@@ -118,14 +118,17 @@ class SimilarityProcessor(BillProcessor):
         return import_string(provider_path)
 
     @staticmethod
-    def _normalize_match(source_bill, item):
+    def _normalize_match(source_bill, item, rank):
         if isinstance(item, Bill):
             if item.pk == source_bill.pk:
                 return None
             return {
+                "target_bill": item,
                 "title": item.title,
                 "date": item.proposed_at.strftime("%Y.%m.%d") if item.proposed_at else "",
                 "stage_label": item.get_stage_display(),
+                "rank": rank,
+                "method": "provider",
             }
 
         if not isinstance(item, dict):
@@ -134,8 +137,15 @@ class SimilarityProcessor(BillProcessor):
         title = str(item.get("title") or item.get("bill_title") or "").strip()
         if not title:
             return None
+        target = item.get("target_bill")
+        if isinstance(target, Bill) and target.pk == source_bill.pk:
+            return None
         return {
+            "target_bill": target if isinstance(target, Bill) else None,
             "title": title[:500],
             "date": str(item.get("date") or item.get("proposed_at") or "")[:20],
             "stage_label": str(item.get("stage") or item.get("stage_label") or "")[:30],
+            "score": float(item.get("score") or 0),
+            "rank": int(item.get("rank") or rank),
+            "method": str(item.get("method") or "provider")[:50],
         }

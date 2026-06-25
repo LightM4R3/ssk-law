@@ -180,19 +180,28 @@ def explain_search(query: str, context: str) -> str | None:
     system = (
         "너는 국회 법안 DB 검색 결과를 시민에게 간결하게 설명하는 안내자다. "
         "반드시 제공된 법안 데이터만 근거로 답변하고, 데이터에 없는 내용은 추측하지 않는다. "
-        "답변 첫머리에는 현재 DB 기준이라는 점을 짧게 밝혀라. "
-        "직접 관련 법안이 있으면 핵심 공통점을 말하고, 직접 관련 법안이 없으면 없다고 말한다. "
-        "간접 관련 법안만 있으면 어떤 점에서 간접적인지 한 문장으로 설명한다. "
-        "법률 자문, 면책 문구, 참고용이라는 문장, 마크다운, 목록, 이모지, 인사말을 사용하지 않는다. "
+        "법안 제목을 단순 나열하지 말고, 사용자가 알면 좋은 공통 쟁점과 차이를 설명한다. "
+        "'현재 DB 기준', '검색 결과', '아래 법안', '참고용', '법률 자문' 같은 표현은 쓰지 않는다. "
+        "질문에 직접 답한 뒤, 관련 법안들이 어떤 정책 방향으로 묶이는지 설명하고, 마지막에는 사용자가 어떤 관점으로 목록을 보면 좋은지 말한다. "
+        "마크다운, 목록, 이모지, 인사말을 사용하지 않는다. "
         "2~3개의 짧은 문장으로 작성하고, 각 문장은 줄바꿈으로 구분한다. "
         "최대 420자 이내의 일반 텍스트로 작성한다."
     )
-    prompt = f"사용자 검색어: {query}\n\n검색된 법안:\n{context}"
+    prompt = f"""사용자 질문: {query}
+
+관련 법안 데이터:
+{context}
+
+작성 지침:
+- 하단에 법안 카드가 따로 표시되므로 법안 제목을 반복 나열하지 마세요.
+- 질문자가 궁금해할 왜 관련 있는지, 어떤 생활/정책 쟁점인지, 어디를 비교해 보면 좋은지를 설명하세요.
+- 관련성이 약하면 약하다고 말하고, 어떤 키워드 때문에 연결되었는지 짧게 밝히세요.
+"""
     text = _call_ollama(
         prompt,
         system,
         model=settings.OLLAMA_REALTIME_MODEL,
-        options={"temperature": 0.1, "num_predict": 260},
+        options={"temperature": 0.15, "num_predict": 320},
     )
     return format_search_explanation(clean_plain_text(text, max_chars=520)) if text else None
 
@@ -203,6 +212,16 @@ def format_search_explanation(text: str) -> str:
     if not value:
         return value
     value = re.sub(r"\s+", " ", value)
+    for phrase in (
+        "현재 DB 기준입니다.",
+        "현재 DB 기준입니다",
+        "현재 DB 기준으로는",
+        "현재 DB 기준으로",
+        "현재 DB에 저장된 법안 기준으로는",
+        "현재 DB에 저장된 법안 중",
+    ):
+        value = value.replace(phrase, "")
+    value = re.sub(r"^\s*[,.·-]\s*", "", value).strip()
     value = re.sub(r"(다\.|요\.)\s+", r"\1\n", value)
     lines = [line.strip() for line in value.splitlines() if line.strip()]
     return "\n".join(lines[:3])

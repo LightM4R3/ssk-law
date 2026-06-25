@@ -74,7 +74,6 @@ function submitSearch() {
       :picks="picks"
       :eyebrow="curationCopy.eyebrow"
       @select="store.openBill($event.id)"
-      @select-similar="store.openSimilar($event.parentId, $event.index)"
     />
   </section>
 </template>

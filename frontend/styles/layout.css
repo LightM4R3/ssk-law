@@ -1,17 +1,5 @@
 /* Main wrapper, view switching, search row, section heads, footer */
   /* ============ LAYOUT ============ */
-  html,
-  body {
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-  html::-webkit-scrollbar,
-  body::-webkit-scrollbar {
-    width: 0;
-    height: 0;
-    display: none;
-  }
-
   main { max-width: 1240px; margin: 0 auto; padding: 28px 32px 96px; }
   .view { display: none; }
   .view.active { display: block; animation: sukRise .4s var(--ease-suk); }
@@ -124,8 +112,6 @@
     background: rgba(255,255,255,.92);
     color: var(--accent-ink);
     box-shadow: var(--shadow-md);
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
     transition: transform .18s var(--ease-suk), background .18s, color .18s, box-shadow .18s;
   }
   .scroll-top-btn:hover {
@@ -137,26 +123,5 @@
   .scroll-top-btn:active {
     transform: translateY(0);
   }
-
-  .custom-scrollbar {
-    position: fixed;
-    top: 24px;
-    right: 8px;
-    bottom: 24px;
-    z-index: 88;
-    width: 7px;
-    border-radius: var(--r-pill);
-    background: rgba(20,20,25,.06);
-    pointer-events: none;
-  }
-  .custom-scrollbar-thumb {
-    width: 100%;
-    border-radius: inherit;
-    background: linear-gradient(180deg, var(--accent), var(--accent-ink));
-    box-shadow: 0 8px 18px rgba(77,142,201,.28);
-    transition: height .16s var(--ease-suk), transform .08s linear;
-  }
-
-
   /* ============ FOOTER ============ */
   footer { max-width: 1240px; margin: 0 auto; padding: 24px 32px 64px; color: var(--ink-3); font-size: 12.5px; line-height: 1.6; border-top: 1px solid var(--line); text-align: left; }
