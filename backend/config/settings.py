@@ -151,6 +151,7 @@ OLLAMA_BASE_URL = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "gemma4:e4b")
 OLLAMA_REALTIME_MODEL = os.environ.get("OLLAMA_REALTIME_MODEL", "gemma3:4b")
 OLLAMA_TIMEOUT = int(os.environ.get("OLLAMA_TIMEOUT", "180"))
+OLLAMA_ANALYSIS_TIMEOUT = float(os.environ.get("OLLAMA_ANALYSIS_TIMEOUT", "2"))
 OLLAMA_KEEP_ALIVE = os.environ.get("OLLAMA_KEEP_ALIVE", "30m")
 
 # Bill ingestion and post-processing

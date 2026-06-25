@@ -18,7 +18,7 @@ from .serializers import (
     SimilarBillSerializer,
 )
 from .services.similarity import ensure_similar_bills
-from services.ollama import explain_search
+from services.ollama import analyze_user_query, explain_search
 from chat.masking import mask_personal_info
 from chat.models import ChatSession, ChatMessage
 
@@ -236,7 +236,7 @@ def search_view(request):
         )
 
     masked_query = mask_personal_info(query)
-    analysis = _analyze_search_query(masked_query)
+    analysis = _build_search_analysis(masked_query)
     is_dangerous = analysis["risk_level"] == "High"
     session_key = request.data.get("session_key") or "search_session"
     session, _ = ChatSession.objects.get_or_create(session_key=session_key)
@@ -252,6 +252,25 @@ def search_view(request):
             snapshot=analysis
         )
 
+        return Response(
+            {
+                "intro": intro,
+                "ids": [],
+                "bills": [],
+                "snapshot": analysis,
+                "aiPending": False,
+            }
+        )
+
+    if analysis.get("clarificationNeeded"):
+        intro = _compose_clarification_answer(analysis)
+        ChatMessage.objects.create(
+            session=session,
+            role="assistant",
+            content=intro,
+            related_bill_ids=json.dumps([]),
+            snapshot=analysis,
+        )
         return Response(
             {
                 "intro": intro,
@@ -292,7 +311,7 @@ def search_explain_view(request):
         )
 
     masked_query = mask_personal_info(query)
-    analysis = _analyze_search_query(masked_query)
+    analysis = _build_search_analysis(masked_query)
     if analysis["risk_level"] == "High":
         return Response(
             {
@@ -301,6 +320,13 @@ def search_explain_view(request):
                 "aiStatus": "blocked",
             }
         )
+
+    if analysis.get("clarificationNeeded"):
+        return Response({
+            "intro": _compose_clarification_answer(analysis),
+            "snapshot": analysis,
+            "aiStatus": "needs_clarification",
+        })
 
     matched = _search_bills_by_analysis(analysis)
     analysis["displayTags"] = _build_search_display_tags(analysis, matched)
@@ -381,6 +407,10 @@ SEARCH_TOPIC_SYNONYMS = {
     "안전": ["안전", "재난", "소방", "범죄", "보호구역", "생활안전"],
     "디지털": ["디지털", "AI", "ai", "인공지능", "개인정보", "정보통신", "플랫폼", "데이터"],
     "기후": ["기후", "기후위기", "기후변화", "탄소", "탄소중립", "온실가스", "환경", "에너지", "재생에너지", "녹색", "온난화", "배출권", "미세먼지"],
+    "농수산업": ["농수산업", "농업", "농촌", "농어촌", "수산", "수산업", "어업", "식품산업", "스마트농업", "농산물"],
+    "기업": ["기업", "중소기업", "벤처", "벤처기업", "창업", "스타트업", "소상공인", "사업자", "투자"],
+    "청년": ["청년", "청년창업", "청년고용", "청년기업", "청년일자리"],
+    "일자리": ["일자리", "고용", "취업", "채용", "근로", "노동시장"],
 }
 
 SEARCH_STAGE_TERMS = {
@@ -436,6 +466,16 @@ SEARCH_SUFFIX_STOPWORDS = (
     "법률",
 )
 
+STRATEGY_TERM_SYNONYMS = {
+    "기후 피해": ["기후", "기후변화", "기후위기", "재난", "피해", "지원", "복구", "농업재해", "수산"],
+    "농수산업": ["농수산업", "농업", "농촌", "농어촌", "수산", "수산업", "어업", "식품산업", "스마트농업"],
+    "기업 지원": ["기업", "중소기업", "벤처", "벤처기업", "창업", "스타트업", "소상공인", "사업자", "지원"],
+    "청년": ["청년", "청년창업", "청년고용", "청년일자리"],
+    "일자리": ["일자리", "고용", "취업", "채용", "근로"],
+}
+
+CLARIFY_INTENTS = {"chitchat", "nonsense", "too_broad"}
+
 
 def _expand_search_token(token):
     normalized = token.strip().lower()
@@ -454,6 +494,198 @@ def _expand_search_token(token):
         if variant not in expanded:
             expanded.append(variant)
     return expanded
+
+
+def _as_text_list(value, limit=8):
+    if value is None:
+        return []
+    if isinstance(value, str):
+        parts = re.split(r"[,/|]+", value)
+    elif isinstance(value, (list, tuple, set)):
+        parts = value
+    else:
+        parts = [value]
+
+    result = []
+    for item in parts:
+        text = str(item or "").strip()
+        if text and text not in result:
+            result.append(text)
+        if len(result) >= limit:
+            break
+    return result
+
+
+def _expand_strategy_terms(values):
+    terms = []
+    for value in _as_text_list(values, limit=12):
+        lowered = value.lower()
+        if lowered and len(lowered) >= 2 and lowered not in terms:
+            terms.append(lowered)
+        for token in re.findall(r"[가-힣A-Za-z0-9]+", value):
+            for expanded in _expand_search_token(token):
+                if expanded not in terms:
+                    terms.append(expanded)
+
+        for key, synonyms in STRATEGY_TERM_SYNONYMS.items():
+            key_lower = key.lower()
+            if key_lower in lowered or lowered in key_lower:
+                for synonym in synonyms:
+                    normalized = synonym.lower()
+                    if normalized not in terms:
+                        terms.append(normalized)
+    return terms
+
+
+def _should_use_llm_strategy(query):
+    tokens = re.findall(r"[가-힣A-Za-z0-9]+", query)
+    complex_markers = (
+        "인데",
+        "했는데",
+        "피해",
+        "계약",
+        "조언",
+        "추천",
+        "어떻게",
+        "뭘",
+        "어떤",
+        "가능",
+    )
+    return (
+        len(query) >= 28
+        or len(tokens) >= 5
+        or any(marker in query for marker in complex_markers)
+    )
+
+
+def _clamp_confidence(value, default=0.6):
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    return max(0.0, min(1.0, number))
+
+
+def _terms_to_topics(values):
+    text = " ".join(_as_text_list(values, limit=30)).lower()
+    topics = []
+    for topic, terms in SEARCH_TOPIC_SYNONYMS.items():
+        if any(term.lower() in text for term in terms):
+            topics.append(topic)
+    return topics
+
+
+def _promote_rule_strategy(query, analysis):
+    if not _should_use_llm_strategy(query):
+        return analysis
+
+    topics = analysis.get("topics") or []
+    must_have = []
+    nice_to_have = []
+
+    if "기후" in topics:
+        must_have.append("기후 피해" if any(term in query for term in ("피해", "재난", "복구")) else "기후")
+    if "농수산업" in topics:
+        must_have.append("농수산업")
+    if "기업" in topics:
+        must_have.append("기업 지원")
+
+    for topic in ("청년", "일자리", "노동", "복지"):
+        if topic in topics and topic not in nice_to_have:
+            nice_to_have.append(topic)
+
+    if not must_have:
+        for topic in topics[:3]:
+            if topic not in {"복지"}:
+                must_have.append(topic)
+            if len(must_have) >= 2:
+                break
+
+    if not must_have:
+        return analysis
+
+    keyword_terms = _expand_strategy_terms([*must_have, *nice_to_have])
+    merged_keywords = []
+    for keyword in [*keyword_terms, *analysis.get("keywords", [])]:
+        if keyword and keyword not in merged_keywords:
+            merged_keywords.append(keyword)
+
+    analysis.update({
+        "mustHave": must_have[:4],
+        "mustHaveTerms": [_expand_strategy_terms([term]) for term in must_have[:4]],
+        "niceToHave": nice_to_have[:5],
+        "niceToHaveTerms": _expand_strategy_terms(nice_to_have[:5]),
+        "exclude": analysis.get("exclude") or [],
+        "excludeTerms": analysis.get("excludeTerms") or [],
+        "keywords": merged_keywords[:28],
+        "confidence": analysis.get("confidence") or 0.58,
+        "source": "rules_strategy",
+    })
+    return analysis
+
+
+def _build_search_analysis(query):
+    analysis = _analyze_search_query(query)
+    analysis["source"] = "rules"
+
+    if not _should_use_llm_strategy(query):
+        return analysis
+
+    strategy = analyze_user_query(query)
+    if not isinstance(strategy, dict):
+        return _promote_rule_strategy(query, analysis)
+
+    intent = str(strategy.get("intent") or analysis.get("intent") or "search").strip().lower()
+    confidence = _clamp_confidence(strategy.get("confidence"), default=0.55)
+    must_have = _as_text_list(strategy.get("must_have"), limit=4)
+    nice_to_have = _as_text_list(strategy.get("nice_to_have"), limit=5)
+    exclude = _as_text_list(strategy.get("exclude"), limit=5)
+    strategy_keywords = _as_text_list(strategy.get("keywords"), limit=8)
+    search_query = str(strategy.get("search_query") or "").strip()
+
+    keyword_terms = _expand_strategy_terms([search_query, *strategy_keywords, *must_have, *nice_to_have])
+    merged_keywords = []
+    for keyword in [*keyword_terms, *analysis.get("keywords", [])]:
+        if keyword and keyword not in merged_keywords:
+            merged_keywords.append(keyword)
+
+    topic_values = [search_query, *strategy_keywords, *must_have, *nice_to_have]
+    topics = []
+    for topic in [*_terms_to_topics(topic_values), *analysis.get("topics", [])]:
+        if topic not in topics:
+            topics.append(topic)
+
+    risk_level = str(strategy.get("risk_level") or analysis.get("risk_level") or "Low").strip()
+    if intent == "unsafe":
+        risk_level = "High"
+
+    clarification_needed = bool(strategy.get("clarification_needed"))
+    if intent in CLARIFY_INTENTS and confidence < 0.55:
+        clarification_needed = True
+    if confidence < 0.35 and not must_have:
+        clarification_needed = True
+
+    analysis.update({
+        "summary": strategy.get("summary") or analysis.get("summary"),
+        "issue": strategy.get("issue") or strategy.get("summary") or analysis.get("issue"),
+        "searchQuery": search_query,
+        "keywords": merged_keywords[:28],
+        "strategyKeywords": strategy_keywords,
+        "mustHave": must_have,
+        "mustHaveTerms": [_expand_strategy_terms([term]) for term in must_have],
+        "niceToHave": nice_to_have,
+        "niceToHaveTerms": _expand_strategy_terms(nice_to_have),
+        "exclude": exclude,
+        "excludeTerms": _expand_strategy_terms(exclude),
+        "topics": topics,
+        "intent": intent if intent else analysis.get("intent"),
+        "risk_level": risk_level if risk_level in {"High", "Medium", "Low"} else analysis.get("risk_level"),
+        "confidence": confidence,
+        "clarificationNeeded": clarification_needed,
+        "clarificationQuestion": strategy.get("clarification_question") or "",
+        "source": "llm_strategy",
+    })
+    return analysis
 
 
 def _analyze_search_query(query):
@@ -534,13 +766,116 @@ def _build_search_context(bills):
     return "\n".join(lines)
 
 
+def _bill_search_fields(bill):
+    categories = " ".join(mapping.category.label for mapping in bill.bill_categories.all())
+    try:
+        summary = " ".join(
+            part
+            for part in (
+                bill.summary.summary_1,
+                bill.summary.summary_2,
+                bill.summary.summary_3,
+                bill.summary.impact,
+            )
+            if part
+        )
+        summary_ready = True
+    except BillSummary.DoesNotExist:
+        summary = ""
+        summary_ready = False
+
+    title = bill.title or ""
+    committee = bill.committee or ""
+    result = " ".join(part for part in (bill.result_text, bill.result_status, bill.proposer) if part)
+    return {
+        "title": title.lower(),
+        "categories": categories.lower(),
+        "summary": summary.lower(),
+        "committee": committee.lower(),
+        "result": result.lower(),
+        "all": f"{title} {categories} {summary} {committee} {result}".lower(),
+        "summary_ready": summary_ready,
+    }
+
+
+def _matches_any(text, terms):
+    return any(term and term.lower() in text for term in terms)
+
+
+def _score_bill_for_search(bill, analysis):
+    fields = _bill_search_fields(bill)
+    exclude_terms = analysis.get("excludeTerms") or []
+    if exclude_terms and _matches_any(fields["all"], exclude_terms):
+        return None
+
+    required_groups = [group for group in (analysis.get("mustHaveTerms") or []) if group]
+    matched_required = 0
+    score = 0.0
+    for group in required_groups:
+        if _matches_any(fields["all"], group):
+            matched_required += 1
+            score += 7.0
+            if _matches_any(fields["title"], group):
+                score += 4.0
+            if _matches_any(fields["categories"], group):
+                score += 3.0
+            if _matches_any(fields["summary"], group):
+                score += 2.0
+
+    if required_groups:
+        required_min = 2 if len(required_groups) >= 3 else 1
+        if matched_required < required_min:
+            return None
+        if matched_required == len(required_groups):
+            score += 4.0
+
+    nice_terms = analysis.get("niceToHaveTerms") or []
+    for term in nice_terms:
+        if term in fields["title"]:
+            score += 2.0
+        elif term in fields["categories"] or term in fields["summary"]:
+            score += 1.2
+        elif term in fields["all"]:
+            score += 0.6
+
+    keywords = analysis.get("keywords") or []
+    for term in keywords:
+        if not term:
+            continue
+        if term in fields["title"]:
+            score += 4.0
+        elif term in fields["categories"]:
+            score += 3.0
+        elif term in fields["summary"]:
+            score += 2.0
+        elif term in fields["committee"] or term in fields["result"]:
+            score += 1.0
+
+    topics = analysis.get("topics") or []
+    for topic in topics:
+        topic_terms = [term.lower() for term in SEARCH_TOPIC_SYNONYMS.get(topic, [])]
+        if _matches_any(fields["all"], topic_terms):
+            score += 2.0
+
+    if fields["summary_ready"]:
+        score += 0.5
+
+    if not required_groups and score <= 0:
+        return None
+    if score < 3.0:
+        return None
+    return score
+
+
 def _search_bills_by_analysis(analysis: dict, limit: int = 5) -> list:
-    """사용자 질문 분석 결과를 DB 필터와 키워드 검색으로 변환합니다."""
+    """사용자 질문 분석 결과를 DB 필터와 점수 기반 검색으로 변환합니다."""
     keywords = analysis.get("keywords", [])
     filters = analysis.get("filters") or {}
     stages = filters.get("stage") or []
     result_statuses = filters.get("resultStatus") or []
-    if not keywords and not stages and not result_statuses:
+    must_terms = [term for group in (analysis.get("mustHaveTerms") or []) for term in group]
+    nice_terms = analysis.get("niceToHaveTerms") or []
+    if not keywords and not must_terms and not nice_terms and not stages and not result_statuses:
         return []
 
     qs = (
@@ -562,7 +897,12 @@ def _search_bills_by_analysis(analysis: dict, limit: int = 5) -> list:
         qs = qs.filter(result_status__in=result_statuses)
 
     query = Q()
-    for kw in keywords:
+    candidate_terms = []
+    for term in [*must_terms, *nice_terms, *keywords]:
+        if term and term not in candidate_terms:
+            candidate_terms.append(term)
+
+    for kw in candidate_terms:
         if kw:
             query |= (
                 Q(title__icontains=kw)
@@ -578,10 +918,17 @@ def _search_bills_by_analysis(analysis: dict, limit: int = 5) -> list:
     if query:
         qs = qs.filter(query)
 
-    return list(
-        qs.order_by("summary_sort", "-proposed_at")
-        .distinct()[:limit]
-    )
+    candidates = list(qs.order_by("summary_sort", "-proposed_at").distinct()[:250])
+    scored = []
+    for bill in candidates:
+        score = _score_bill_for_search(bill, analysis)
+        if score is None:
+            continue
+        proposed_value = int(bill.proposed_at.strftime("%Y%m%d")) if bill.proposed_at else 0
+        scored.append((score, proposed_value, bill))
+
+    scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
+    return [bill for _, __, bill in scored[:limit]]
 
 
 def _compose_db_search_answer(query: str, analysis: dict, bills: list) -> str:
@@ -599,6 +946,17 @@ def _compose_db_search_answer(query: str, analysis: dict, bills: list) -> str:
             return f"{stage_names} 단계에서 질문 내용과 겹치는 법안 {count}건을 찾았습니다. 대표적으로 {titles}이 있습니다."
         return f"질문 내용과 겹치는 법안 {count}건을 찾았습니다. 대표적으로 {titles}이 있습니다."
     return f"질문과 관련성이 있는 법안 {count}건을 찾았습니다. 대표 결과는 {titles}입니다."
+
+
+def _compose_clarification_answer(analysis: dict) -> str:
+    question = str(analysis.get("clarificationQuestion") or "").strip()
+    if question:
+        return question
+    must_have = analysis.get("mustHave") or []
+    if must_have:
+        choices = ", ".join(must_have[:3])
+        return f"질문에 여러 주제가 섞여 있어요. {choices} 중 어떤 축을 먼저 볼지 조금만 좁혀 주세요."
+    return "질문 의도를 바로 법안 검색으로 연결하기 어렵습니다. 궁금한 분야나 상황을 한 문장으로 조금 더 구체화해 주세요."
 
 
 def _build_search_display_tags(analysis: dict, bills: list) -> list[str]:

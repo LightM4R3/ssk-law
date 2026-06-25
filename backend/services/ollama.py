@@ -17,6 +17,7 @@ def _call_ollama(
     model: str | None = None,
     options: dict | None = None,
     response_format: str | dict | None = None,
+    timeout_seconds: float | None = None,
 ) -> str | None:
     """Send a prompt to Ollama and return the response text, or None on failure."""
     url = f"{settings.OLLAMA_BASE_URL}/api/generate"
@@ -34,7 +35,11 @@ def _call_ollama(
         payload["format"] = response_format
 
     try:
-        resp = requests.post(url, json=payload, timeout=settings.OLLAMA_TIMEOUT)
+        resp = requests.post(
+            url,
+            json=payload,
+            timeout=timeout_seconds or settings.OLLAMA_TIMEOUT,
+        )
         resp.raise_for_status()
         return resp.json().get("response", "")
     except Exception as e:
@@ -254,37 +259,51 @@ def clean_plain_text(text: str, max_chars: int = 600) -> str:
 
 
 def analyze_user_query(message: str) -> dict | None:
-    """사용자의 자연어 질문을 분석하여 상황 요약, 쟁점, 키워드, 위험도를 추출합니다."""
+    """Convert a natural-language input into a bill-search strategy."""
     system = (
-        "당신은 사용자의 법률 질문을 분석하여 구조화된 정보로 반환하는 AI 분석기입니다. "
-        "반드시 JSON으로만 응답해야 하며, 다른 텍스트는 절대 금지합니다."
+        "너는 사용자의 자연어 입력을 국회 법안 검색 전략으로 바꾸는 분석기다. "
+        "답변을 생성하지 말고 JSON만 반환한다. "
+        "입력이 잡담, 의미 불명, 너무 넓은 질문, 여러 주제 혼합인지 판단한다. "
+        "검색이 가능하면 필수 조건, 보조 조건, 제외 조건을 분리한다. "
+        "직접 검색하기 어렵다면 clarification_needed를 true로 하고 사용자가 고를 수 있는 짧은 질문을 만든다."
     )
     
-    prompt = f"""아래의 사용자 법률 관련 질문을 분석하여 상황 요약, 법적 쟁점, 검색용 키워드, 그리고 위험도를 추출해 주세요.
+    prompt = f"""사용자 입력을 법안 검색 전략 JSON으로 변환하세요.
 
-[사용자 질문]
+[사용자 입력]
 "{message}"
 
-반드시 아래 JSON 형식으로만 응답하세요 (다른 텍스트 절대 금지):
+반드시 아래 JSON 형식으로만 응답하세요. 없는 값은 빈 배열이나 빈 문자열로 둡니다.
 {{
-  "summary": "사용자가 처한 상황에 대한 1~2문장의 객관적 요약",
-  "issue": "사용자가 겪고 있는 법적 핵심 쟁점이나 질문 사항",
-  "keywords": ["법령 및 발의안 검색에 유용한 핵심 명사 키워드 2~3개"],
-  "risk_level": "High 또는 Medium 또는 Low"
+  "intent": "bill_search | legal_question | chitchat | nonsense | unsafe | too_broad | mixed",
+  "summary": "사용자 입력을 검색 관점에서 1문장으로 정리",
+  "search_query": "DB 검색에 사용할 짧은 한국어 검색문",
+  "must_have": ["검색 결과가 반드시 만족해야 할 핵심 축 1~4개"],
+  "nice_to_have": ["있으면 좋은 보조 축 0~5개"],
+  "exclude": ["질문과 무관해 제외할 주제 0~5개"],
+  "keywords": ["검색용 핵심 명사 3~8개"],
+  "risk_level": "High | Medium | Low",
+  "confidence": 0.0,
+  "clarification_needed": false,
+  "clarification_question": ""
 }}
 
-[위험도(risk_level) 판단 기준]
-- High: 법 회피, 범죄 모의, 증거 인멸, 사기 수법 문의, 불법 행위 조력 등 위법하거나 부당한 행위를 꾀하는 질문.
-- Medium: 소송이나 분쟁에 대한 공격적 대처 방법, 다소 경계선 상의 행위에 대한 조언 요구.
-- Low: 단순 법률 절차 문의, 일상적인 피해 구제 방법 상담(예: 보증금 미반환 대처, 부당해고 구제 절차 등), 일반적인 법안/법령 정보 질문.
+[판단 지침]
+- confidence는 검색 전략이 명확하면 0.75 이상, 여러 주제가 섞였지만 검색 축을 잡을 수 있으면 0.45~0.74, 의미가 불명확하면 0.44 이하로 둡니다.
+- must_have에는 질문의 중심 축만 넣습니다. 예: "기후 피해", "농수산업", "기업 지원".
+- nice_to_have에는 부가 맥락을 넣습니다. 예: "청년", "일자리", "벤처".
+- exclude에는 질문과 무관한 큰 분야를 넣습니다. 예: "도로교통", "선거", "양성평등".
+- 사용자가 법안 검색을 한 것이 아니라면 clarification_needed를 true로 둡니다.
+- unsafe는 범죄 모의, 증거 인멸, 법 회피, 불법 행위 조력입니다.
 """
 
     text = _call_ollama(
         prompt,
         system,
         model=settings.OLLAMA_REALTIME_MODEL,
-        options={"temperature": 0.1, "num_predict": 260},
+        options={"temperature": 0.0, "num_predict": 220},
         response_format="json",
+        timeout_seconds=float(getattr(settings, "OLLAMA_ANALYSIS_TIMEOUT", 3)),
     )
     if not text:
         return None
