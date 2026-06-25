@@ -93,13 +93,56 @@
   .card:hover .suk-hint { opacity: 1; transform: translateY(-50%) translateX(0); }
   .card.compact h3 { font-size: 16px; }
   .card.compact .summary { -webkit-line-clamp: 2; font-size: 13.5px; }
-  .card .bookmark {
-    position: absolute; top: 18px; right: 18px;
-    width: 32px; height: 32px; border-radius: 50%;
-    display: grid; place-items: center; color: var(--ink-3);
-    opacity: 0; transition: opacity .15s, background .15s;
-    z-index: 3;
+
+  .api-state-card {
+    grid-column: 1 / -1;
+    min-height: 292px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-md);
+    padding: 30px;
+    display: grid; grid-template-columns: 64px 1fr; gap: 22px; align-items: stretch;
+    position: relative; overflow: hidden;
+    box-shadow: var(--shadow-sm);
   }
-  .card:hover .bookmark { opacity: 1; }
-  .card .bookmark:hover { background: rgba(255,255,255,.7); color: var(--ink); }
-  .card .bookmark.saved { opacity: 1; color: var(--accent-ink); }
+  .api-state-card::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+    background: var(--accent);
+  }
+  .api-state-card::after {
+    content: ""; position: absolute; inset: 0;
+    background: linear-gradient(135deg, var(--accent-soft) 0%, transparent 46%);
+    opacity: .55; pointer-events: none;
+  }
+  .api-state-card > * { position: relative; z-index: 1; }
+  .api-state-mark {
+    width: 64px; height: 64px; border-radius: 18px;
+    display: grid; place-items: center;
+    background: var(--ink); color: #fff;
+    font-weight: 800; font-size: 21px; letter-spacing: 0;
+    box-shadow: 0 12px 28px rgba(20,20,25,.14);
+  }
+  .api-state-body { display: flex; flex-direction: column; gap: 11px; min-width: 0; }
+  .api-state-kicker {
+    display: inline-flex; width: fit-content; gap: 4px; flex-wrap: wrap;
+    color: var(--accent-ink); background: var(--accent-soft);
+    border-radius: var(--r-pill); padding: 5px 10px;
+    font-size: 12px; font-weight: 700;
+  }
+  .api-state-card h3 {
+    margin: 0; font-size: 24px; line-height: 1.35; letter-spacing: -0.02em;
+  }
+  .api-state-card p {
+    margin: 0; color: var(--ink-2); font-size: 14.5px; line-height: 1.65;
+    max-width: 68ch;
+  }
+  .api-state-action {
+    width: fit-content; min-height: 48px; margin-top: auto;
+    display: inline-flex; align-items: center; justify-content: center; gap: 9px;
+    padding: 0 22px; border-radius: var(--r-pill);
+    background: var(--ink); color: #fff;
+    font-size: 14px; font-weight: 800;
+    box-shadow: 0 14px 30px rgba(20,20,25,.14);
+    transition: transform .18s var(--ease-suk), box-shadow .18s var(--ease-suk), background .18s;
+  }
+  .api-state-action:hover { transform: translateY(-1px); box-shadow: 0 18px 36px rgba(20,20,25,.18); }
+  .api-state-action:active { transform: translateY(0); box-shadow: 0 10px 20px rgba(20,20,25,.12); }
+  .api-state-action svg { flex: 0 0 auto; }

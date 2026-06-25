@@ -1,0 +1,121 @@
+@import "../../../styles/tokens.css";
+@import "../../../styles/layout.css";
+@import "../../../styles/header.css";
+@import "../../../styles/ticker.css";
+@import "../../../styles/carousel.css";
+@import "../../../styles/filters.css";
+@import "../../../styles/cards.css";
+@import "../../../styles/weekly.css";
+@import "../../../styles/categories.css";
+@import "../../../styles/similar.css";
+@import "../../../styles/search-results.css";
+@import "../../../styles/posts.css";
+@import "../../../styles/modal.css";
+@import "../../../styles/auth.css";
+@import "../../../styles/responsive.css";
+
+#app {
+  min-height: 100vh;
+}
+
+.nav a.router-link-active {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+.ticker-track {
+  gap: 28px;
+}
+
+.ticker-track span {
+  white-space: nowrap;
+}
+
+.cat-card,
+.brand {
+  text-decoration: none;
+}
+
+.weekly-row h3 {
+  margin: 0 0 6px;
+}
+
+.weekly-row p,
+.similar-hero p {
+  margin: 0;
+  color: var(--ink-2);
+  line-height: 1.6;
+}
+
+.similar-hero {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 28px;
+  margin-bottom: 18px;
+}
+
+.similar-hero h2 {
+  margin: 12px 0 8px;
+}
+
+.modal-stage-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+  gap: 12px;
+}
+
+.modal-stage-head div:first-child {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.modal-stage-head span {
+  color: var(--accent-ink);
+}
+
+.modal-stage-head div:last-child {
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+
+button.similar-item,
+button.sim-parent {
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+}
+
+.cat-badge.total-badge {
+  --cat-h: 245;
+  --cat-tint: var(--accent-soft);
+  --cat-ink: var(--accent-ink);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.cat-badge.muted {
+  background: var(--surface-2);
+  color: var(--ink-3);
+}
+
+.cat-grid .cat-card {
+  min-height: 300px;
+}
+
+.global-error-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: grid;
+  place-items: center;
+  padding: 28px;
+  background: rgba(248, 247, 244, .78);
+  backdrop-filter: blur(8px);
+}
+
+.global-error-overlay .api-state-card {
+  width: min(760px, 100%);
+}

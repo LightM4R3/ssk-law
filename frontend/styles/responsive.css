@@ -5,10 +5,161 @@
     .span-3, .span-2, .span-4, .span-6 { grid-column: span 2; }
     .pick { padding: 32px; }
     .pick h2 { font-size: 28px; }
+    .pick-body { grid-template-columns: 1fr; gap: 24px; }
+    .pick-side { order: 2; }
     .pick-foot { grid-template-columns: 1fr; gap: 20px; }
+    .pick-stage-labels { font-size: 10.5px; }
     .pick-stat { text-align: left; }
     .weekly-row { grid-template-columns: 56px 1fr; gap: 16px; padding: 18px 20px; }
-    .weekly-stats, .weekly-go { display: none; }
-    .topbar-inner { grid-template-columns: auto auto; }
-    .nav { display: none; }
+    .weekly-stats { display: none; }
+    .topbar-inner {
+      grid-template-columns: auto 1fr auto;
+      gap: 12px;
+      padding: 14px 20px 12px;
+    }
+    .brand { width: max-content; }
+    .brand small {
+      display: none;
+    }
+    .header-menu-toggle {
+      display: none;
+    }
+    .nav {
+      display: none;
+    }
+    .account-actions {
+      grid-column: 2;
+      grid-row: 1;
+      justify-content: flex-end;
+      min-width: 0;
+    }
+    .account-nickname {
+      max-width: 110px;
+    }
+    .account-actions a.account-link {
+      display: none;
+    }
+    .account-actions button.account-link {
+      display: inline-flex;
+      min-width: 64px;
+      height: 34px;
+      padding: 0 11px;
+      font-size: 12.5px;
+    }
+    .mobile-account-links {
+      display: none;
+    }
+    .mobile-bottom-nav {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 120;
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 0;
+      min-height: calc(66px + env(safe-area-inset-bottom));
+      padding: 6px 8px max(6px, env(safe-area-inset-bottom));
+      border-top: 1px solid var(--line);
+      background: rgba(255,255,255,.97);
+      box-shadow: 0 -10px 28px rgba(20,20,25,.12);
+    }
+    .mobile-bottom-nav-item {
+      min-width: 0;
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 3px;
+      padding: 6px 3px;
+      border-radius: 14px;
+      color: var(--ink-3);
+      font-size: 10.5px;
+      font-weight: 900;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      transition: background .16s, color .16s, box-shadow .16s, transform .16s;
+    }
+    .mobile-bottom-nav-icon {
+      width: 20px;
+      height: 20px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: .82;
+    }
+    .mobile-bottom-nav-item span {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .mobile-bottom-nav-item.router-link-active {
+      background: var(--accent-soft);
+      color: var(--accent-ink);
+      box-shadow: 0 8px 18px rgba(77,142,201,.18);
+      transform: translateY(-1px);
+    }
+    .mobile-bottom-nav-item.router-link-active .mobile-bottom-nav-icon {
+      opacity: 1;
+    }
+    main {
+      padding-bottom: 98px;
+    }
+    footer {
+      padding-bottom: 106px;
+    }
+    .scroll-top-btn {
+      right: 14px;
+      bottom: calc(82px + env(safe-area-inset-bottom));
+      width: 42px;
+      height: 42px;
+      z-index: 119;
+    }
+    .card {
+      min-height: 0;
+      gap: 10px;
+      padding: 18px;
+    }
+    .card h3 {
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      font-size: 17px;
+    }
+    .card .summary {
+      -webkit-line-clamp: 2;
+      font-size: 13.5px;
+      line-height: 1.55;
+    }
+    .card.compact .summary {
+      -webkit-line-clamp: 1;
+    }
+    .card-foot {
+      padding-top: 10px;
+    }
+    .post-card {
+      min-height: 0;
+      gap: 10px;
+      padding: 20px;
+    }
+    .post-card h3 {
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      font-size: 21px;
+    }
+    .post-card p {
+      -webkit-line-clamp: 2;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+    .post-card-foot {
+      padding-top: 11px;
+    }
   }
