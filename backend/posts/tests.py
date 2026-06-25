@@ -357,12 +357,26 @@ class CommentApiTests(APITestCase):
 
     def test_delete_comment_marks_is_deleted_without_removing_row(self):
         self.login_as(self.writer)
+        detail_url = reverse("comment-detail", kwargs={"idx": self.comment.idx})
 
-        response = self.client.delete(
-            reverse("comment-detail", kwargs={"idx": self.comment.idx})
-        )
+        response = self.client.delete(detail_url)
 
         self.comment.refresh_from_db()
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertTrue(self.comment.is_deleted)
+        self.assertEqual(self.comment.content, "삭제된 댓글입니다.")
         self.assertTrue(Comment.objects.filter(idx=self.comment.idx).exists())
+
+        detail_response = self.client.get(detail_url)
+        list_response = self.client.get(
+            reverse("comment-list-create", kwargs={"post_idx": self.post.idx})
+        )
+        update_response = self.client.patch(
+            detail_url,
+            {"content": "Deleted comment should not be editable"},
+            format="json",
+        )
+
+        self.assertEqual(detail_response.data["content"], "삭제된 댓글입니다.")
+        self.assertEqual(list_response.data["comments"][0]["content"], "삭제된 댓글입니다.")
+        self.assertEqual(update_response.status_code, status.HTTP_403_FORBIDDEN)

@@ -51,7 +51,12 @@ class IsCommentOwnerOrReadOnly(permissions.BasePermission):
     def has_object_permission(self, request, view, obj):
         if request.method in permissions.SAFE_METHODS:
             return True
-        return bool(request.user and request.user.is_authenticated and obj.user_id == request.user.idx)
+        return bool(
+            request.user
+            and request.user.is_authenticated
+            and obj.user_id == request.user.idx
+            and not obj.is_deleted
+        )
 
 
 @method_decorator(csrf_protect, name="dispatch")
@@ -229,7 +234,8 @@ class CommentDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     def perform_destroy(self, instance):
         instance.is_deleted = True
-        instance.save(update_fields=["is_deleted", "updated_at"])
+        instance.content = "삭제된 댓글입니다."
+        instance.save(update_fields=["is_deleted", "content", "updated_at"])
 
 
 class UserCommentListView(generics.ListAPIView):

@@ -150,6 +150,13 @@ class CommentSerializer(serializers.ModelSerializer):
         return value
 
 
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if instance.is_deleted:
+            data["content"] = "삭제된 댓글입니다."
+        return data
+
+
 class CommentUpdateSerializer(CommentSerializer):
     class Meta(CommentSerializer.Meta):
         fields = [

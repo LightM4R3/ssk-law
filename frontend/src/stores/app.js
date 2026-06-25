@@ -3,7 +3,7 @@ import { defineStore } from "pinia";
 import {
   CATEGORY_META,
   STAGES,
-} from "../data/presentation";
+} from "../data/display";
 import {
   getApiErrorState,
   lawApi,
